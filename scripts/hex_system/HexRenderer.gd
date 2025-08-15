@@ -35,11 +35,14 @@ func _draw_hex_tile(tile: HexTile):
 		color = Color.BLACK
 	
 	draw_colored_polygon(points, color)
-	
+
+	# Draw outlines for all terrains (including roads and creeks)
 	var outline_color = Color.BLACK if tile.is_explored else Color.DARK_GRAY
 	for i in range(points.size()):
 		var next_i = (i + 1) % points.size()
 		draw_line(points[i], points[next_i], outline_color, 1.0)
+
+	# No additional overlays for roads and rivers; base fill color is used
 
 func _get_hex_points(center: Vector2) -> PackedVector2Array:
 	var points = PackedVector2Array()
@@ -53,6 +56,19 @@ func _get_hex_points(center: Vector2) -> PackedVector2Array:
 		)
 		points.append(point)
 	
+	return points
+
+func _get_hex_points_scaled(center: Vector2, radius_scale: float) -> PackedVector2Array:
+	var points = PackedVector2Array()
+	var angle_offset = 0.0 if flat_top else PI / 6.0
+	var radius = hex_size * radius_scale
+	for i in range(6):
+		var angle = angle_offset + i * PI / 3.0
+		var point = center + Vector2(
+			radius * cos(angle),
+			radius * sin(angle)
+		)
+		points.append(point)
 	return points
 
 func update_display():

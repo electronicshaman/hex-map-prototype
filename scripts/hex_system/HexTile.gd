@@ -36,7 +36,7 @@ func _set_terrain_properties():
 		TerrainType.TOWN:
 			movement_cost = 1
 		TerrainType.MOUNTAIN:
-			movement_cost = 4
+			movement_cost = 999  # Impassable mountain
 		TerrainType.ROAD:
 			movement_cost = 1
 		TerrainType.PLAINS:
@@ -84,11 +84,11 @@ func get_terrain_color() -> Color:
 		TerrainType.CREEK:
 			return Color.CYAN
 		TerrainType.TOWN:
-			return Color.BROWN
+			return Color.LIGHT_GRAY
 		TerrainType.MOUNTAIN:
-			return Color.DIM_GRAY
+			return Color.DARK_GRAY
 		TerrainType.ROAD:
-			return Color.SANDY_BROWN
+			return Color.SADDLE_BROWN
 		TerrainType.PLAINS:
 			return Color.YELLOW_GREEN
 		_:

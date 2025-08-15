@@ -4,8 +4,8 @@ extends Node2D
 signal tile_clicked(tile: HexTile)
 signal tile_hovered(tile: HexTile)
 
-@export var grid_width: int = 40
-@export var grid_height: int = 30
+@export var grid_width: int = 80
+@export var grid_height: int = 60
 @export var hex_size: float = 32.0
 @export var flat_top: bool = false
 @export var terrain_generator: Resource
@@ -26,8 +26,8 @@ func _initialize_grid():
 		for r in range(-_half_h(), _half_h()):
 			var coords = HexCoordinates.new(q, r)
 			var tile = HexTile.new(coords, HexTile.TerrainType.PLAINS)
-			tile.set_visibility(true)  # Make tiles visible initially
-			tile.explore()  # Mark as explored so they render
+			# Start unseen and unexplored; visibility will be updated around player
+			tile.set_visibility(false)
 			tiles[_coord_key(coords)] = tile
 			count += 1
 			
@@ -99,7 +99,7 @@ func pixel_to_hex(pixel_pos: Vector2) -> HexCoordinates:
 func hex_to_pixel(coords: HexCoordinates) -> Vector2:
 	return coords.to_pixel(hex_size, flat_top)
 
-func find_path_to(start: HexCoordinates, end: HexCoordinates) -> Array[HexCoordinates]:
+func find_path_to(start: HexCoordinates, end: HexCoordinates, prefer_roads: bool = false) -> Array[HexCoordinates]:
 	# A* with a simple priority queue (array + separate priority map)
 	var frontier: Array[HexCoordinates] = []
 	var priority_map: Dictionary = {}
@@ -122,7 +122,19 @@ func find_path_to(start: HexCoordinates, end: HexCoordinates) -> Array[HexCoordi
 			if not tile or not tile.can_move_to():
 				continue
 
-			var new_cost = cost_so_far[_coord_key(current_node)] + tile.movement_cost
+			var step_cost: float = float(tile.movement_cost)
+			if prefer_roads:
+				var current_tile = get_tile(current_node)
+				if current_tile and current_tile.terrain_type == HexTile.TerrainType.ROAD:
+					# Prefer staying on roads; small penalty for leaving road
+					if tile.terrain_type == HexTile.TerrainType.ROAD:
+						step_cost *= 0.5
+					else:
+						step_cost += 0.5
+				elif current_tile and current_tile.terrain_type != HexTile.TerrainType.ROAD and tile.terrain_type == HexTile.TerrainType.ROAD:
+					# Slight incentive to move onto a road
+					step_cost -= 0.25
+			var new_cost = float(cost_so_far[_coord_key(current_node)]) + step_cost
 			var neighbor_key = _coord_key(neighbor)
 
 			if neighbor_key not in cost_so_far or new_cost < cost_so_far[neighbor_key]:
@@ -243,7 +255,7 @@ func update_visibility(center: HexCoordinates, sight_range: int):
 			tile.set_visibility(true)
 			tile.explore()
 	
-	# Hide tiles that are no longer visible (only check previously visible ones)
+	# Hide tiles that are no longer visible but keep them explored (so they render dimmed)
 	for key in tiles:
 		var tile = tiles[key]
 		if tile.is_visible and key not in visible_coords:

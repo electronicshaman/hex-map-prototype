@@ -59,9 +59,8 @@ func _debug_timer_tick():
 	
 	was_mouse_pressed = is_mouse_pressed
 	
-	# Only trigger hover if mouse position changed (to reduce spam)
+	# Only trigger hover if mouse position changed (no logging)
 	if viewport_mouse != last_mouse_position:
-		print("Mouse moved to: ", viewport_mouse)
 		_handle_mouse_hover(viewport_mouse)
 		last_mouse_position = viewport_mouse
 	
@@ -77,7 +76,6 @@ func _input(event: InputEvent):
 	print("EMERGENCY INPUT: GameController received ", event.get_class())
 	
 	if event is InputEventMouseMotion:
-		print("MOUSE MOTION at: ", event.position)
 		_handle_mouse_hover(event.position)
 	elif event is InputEventMouseButton:
 		print("MOUSE BUTTON: ", event.button_index, " pressed: ", event.pressed, " at: ", event.position)
@@ -92,7 +90,6 @@ func _unhandled_input(event: InputEvent):
 	print("EMERGENCY UNHANDLED INPUT: GameController received ", event.get_class())
 	
 	if event is InputEventMouseMotion:
-		print("UNHANDLED MOUSE MOTION at: ", event.position)
 		_handle_mouse_hover(event.position)
 	elif event is InputEventMouseButton:
 		print("UNHANDLED MOUSE BUTTON: ", event.button_index, " pressed: ", event.pressed, " at: ", event.position)
@@ -103,27 +100,20 @@ func _unhandled_input(event: InputEvent):
 		_handle_keyboard_input(event)
 
 func _handle_mouse_hover(screen_pos: Vector2):
-	print("=== HOVER: Processing mouse position ", screen_pos, " ===")
-	
 	if not hex_grid or not player:
-		print("Missing hex_grid or player for hover")
 		return
 	
 	# Convert screen to world coordinates
 	var world_pos = _screen_to_world(screen_pos)
-	print("World position: ", world_pos)
 	
 	# Convert to hex coordinates  
 	var hex_coords = hex_grid.pixel_to_hex(world_pos)
-	print("Hex coordinates: ", hex_coords._to_string())
 	
 	# Get tile
 	var tile = hex_grid.get_tile(hex_coords)
 	if tile and tile.is_explored:
-		print("Valid tile found - calculating path preview")
 		_show_path_preview(hex_coords)
 	else:
-		print("No valid tile or not explored")
 		hex_grid.clear_highlights()
 
 func _handle_mouse_click(screen_pos: Vector2):
@@ -212,24 +202,17 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 	return screen_pos
 
 func _show_path_preview(target: HexCoordinates):
-	print("=== PATH PREVIEW: Calculating path to ", target._to_string(), " ===")
-	
 	# Calculate movement path
 	var movement_path = player.calculate_movement_path_to(target)
 	if not movement_path or not movement_path.is_valid:
-		print("Invalid movement path")
 		return
-	
-	print("Path calculated - cost: ", movement_path.total_cost, " points: ", player.get_movement_points_remaining())
 	
 	# Determine color based on affordability
 	var path_color: Color
 	if movement_path.can_afford(player.get_movement_points_remaining()):
 		path_color = Color.YELLOW  # Bright yellow for affordable
-		print("Path is AFFORDABLE - showing in yellow")
 	else:
 		path_color = Color.ORANGE_RED  # Bright orange-red for too expensive
-		print("Path is TOO EXPENSIVE - showing in red")
 	
 	# Highlight the path
 	var tiles_to_highlight: Array[HexTile] = []
@@ -238,13 +221,13 @@ func _show_path_preview(target: HexCoordinates):
 		if tile:
 			tiles_to_highlight.append(tile)
 	
-	print("Highlighting ", tiles_to_highlight.size(), " tiles in path")
 	hex_grid.highlight_tiles(tiles_to_highlight, path_color)
 
 func _setup_camera():
 	camera = Camera2D.new()
 	camera.name = "MainCamera"
-	camera.zoom = Vector2(0.5, 0.5)  # Zoom out to see more tiles
+	# Start zoomed in a bit by default
+	camera.zoom = Vector2(1.5, 1.5)
 	camera.position = Vector2(0, 0)  # Start at origin
 	camera.enabled = true
 	add_child(camera)
@@ -332,12 +315,29 @@ func _setup_generation_ui():
 	gen_controls["moisture_frequency"] = _add_slider(vb, "Moisture Freq", 0.02, 0.3, 0.005)
 	# Mountain threshold
 	gen_controls["mountain_threshold"] = _add_slider(vb, "Mountain Threshold", 0.4, 0.8, 0.01)
+	# Hill threshold
+	gen_controls["hill_threshold"] = _add_slider(vb, "Hill Threshold", 0.3, 0.7, 0.01)
+	# Valley threshold
+	gen_controls["valley_threshold"] = _add_slider(vb, "Valley Threshold", 0.1, 0.6, 0.01)
+	# Moisture thresholds
+	gen_controls["high_moisture_threshold"] = _add_slider(vb, "High Moisture", 0.4, 0.9, 0.01)
+	gen_controls["medium_moisture_threshold"] = _add_slider(vb, "Medium Moisture", 0.3, 0.8, 0.01)
+	gen_controls["low_moisture_threshold"] = _add_slider(vb, "Low Moisture", 0.1, 0.7, 0.01)
 	# Warp enabled
 	gen_controls["warp_enabled"] = _add_checkbox(vb, "Warp Enabled")
 	# Warp amplitude
 	gen_controls["warp_amplitude"] = _add_slider(vb, "Warp Amplitude", 0.0, 100.0, 1.0)
 	# River count
 	gen_controls["river_count"] = _add_spinbox(vb, "Rivers", 0, 20, 1)
+	# Sight range (player vision)
+	gen_controls["sight_range"] = _add_slider(vb, "Sight Range", 2.0, 15.0, 1.0)
+	# Camera zoom (lower = zoom out, higher = zoom in)
+	gen_controls["camera_zoom"] = _add_slider(vb, "Camera Zoom", 0.25, 3.0, 0.05)
+	# Goldfield params
+	gen_controls["goldfield_elevation_min"] = _add_slider(vb, "Gold Elev Min", 0.0, 1.0, 0.01)
+	gen_controls["goldfield_moisture_min"] = _add_slider(vb, "Gold Moist Min", 0.0, 1.0, 0.01)
+	gen_controls["goldfield_moisture_max"] = _add_slider(vb, "Gold Moist Max", 0.0, 1.0, 0.01)
+	gen_controls["goldfield_noise_threshold"] = _add_slider(vb, "Gold Noise Thresh", 0.0, 1.0, 0.01)
 
 	# Buttons
 	var hb = HBoxContainer.new()
@@ -355,9 +355,36 @@ func _setup_generation_ui():
 		(_get_slider(gen_controls["elevation_frequency"]).value) = tg.elevation_frequency
 		(_get_slider(gen_controls["moisture_frequency"]).value) = tg.moisture_frequency
 		(_get_slider(gen_controls["mountain_threshold"]).value) = tg.mountain_threshold
+		(_get_slider(gen_controls["hill_threshold"]).value) = tg.hill_threshold
+		(_get_slider(gen_controls["valley_threshold"]).value) = tg.valley_threshold
+		(_get_slider(gen_controls["high_moisture_threshold"]).value) = tg.high_moisture_threshold
+		(_get_slider(gen_controls["medium_moisture_threshold"]).value) = tg.medium_moisture_threshold
+		(_get_slider(gen_controls["low_moisture_threshold"]).value) = tg.low_moisture_threshold
 		(_get_checkbox(gen_controls["warp_enabled"]).button_pressed) = tg.warp_enabled
 		(_get_slider(gen_controls["warp_amplitude"]).value) = tg.warp_amplitude
 		(_get_spinbox(gen_controls["river_count"]).value) = tg.river_count
+		(_get_slider(gen_controls["goldfield_elevation_min"]).value) = tg.goldfield_elevation_min
+		(_get_slider(gen_controls["goldfield_moisture_min"]).value) = tg.goldfield_moisture_min
+		(_get_slider(gen_controls["goldfield_moisture_max"]).value) = tg.goldfield_moisture_max
+		(_get_slider(gen_controls["goldfield_noise_threshold"]).value) = tg.goldfield_noise_threshold
+
+	# Initialize sight range slider from current player value
+	if player:
+		(_get_slider(gen_controls["sight_range"]).value) = float(player.sight_range)
+		# Live update: when sight slider changes, update player and visibility immediately
+		_get_slider(gen_controls["sight_range"]).value_changed.connect(func(v):
+			if player and hex_grid:
+				player.sight_range = int(v)
+				hex_grid.update_visibility(player.current_hex, player.sight_range)
+		)
+
+	# Initialize camera zoom slider and live-update camera
+	if camera and "camera_zoom" in gen_controls:
+		(_get_slider(gen_controls["camera_zoom"]).value) = float(camera.zoom.x)
+		_get_slider(gen_controls["camera_zoom"]).value_changed.connect(func(v):
+			if camera:
+				camera.zoom = Vector2(v, v)
+		)
 
 	regen_btn.pressed.connect(func():
 		_apply_generation_settings()
@@ -441,12 +468,47 @@ func _apply_generation_settings():
 	if not hex_grid or not hex_grid.terrain_generator:
 		return
 	var tg: TerrainGenerator = hex_grid.terrain_generator
+	# Apply sight range from UI to player as part of settings apply
+	if "sight_range" in gen_controls and player:
+		player.sight_range = int(_get_slider(gen_controls["sight_range"]).value)
+	# Apply camera zoom from UI
+	if "camera_zoom" in gen_controls and camera:
+		camera.zoom = Vector2(_get_slider(gen_controls["camera_zoom"]).value, _get_slider(gen_controls["camera_zoom"]).value)
 	tg.elevation_frequency = _get_slider(gen_controls["elevation_frequency"]).value
 	tg.moisture_frequency = _get_slider(gen_controls["moisture_frequency"]).value
 	tg.mountain_threshold = _get_slider(gen_controls["mountain_threshold"]).value
+	tg.hill_threshold = _get_slider(gen_controls["hill_threshold"]).value
+	tg.valley_threshold = _get_slider(gen_controls["valley_threshold"]).value
+	# Normalize moisture thresholds to low <= medium <= high
+	var low_m = _get_slider(gen_controls["low_moisture_threshold"]).value
+	var med_m = _get_slider(gen_controls["medium_moisture_threshold"]).value
+	var high_m = _get_slider(gen_controls["high_moisture_threshold"]).value
+	var m_vals: Array = [low_m, med_m, high_m]
+	m_vals.sort()
+	tg.low_moisture_threshold = m_vals[0]
+	tg.medium_moisture_threshold = m_vals[1]
+	tg.high_moisture_threshold = m_vals[2]
+	# Reflect normalized values back to sliders
+	_get_slider(gen_controls["low_moisture_threshold"]).value = tg.low_moisture_threshold
+	_get_slider(gen_controls["medium_moisture_threshold"]).value = tg.medium_moisture_threshold
+	_get_slider(gen_controls["high_moisture_threshold"]).value = tg.high_moisture_threshold
 	tg.warp_enabled = _get_checkbox(gen_controls["warp_enabled"]).button_pressed
 	tg.warp_amplitude = _get_slider(gen_controls["warp_amplitude"]).value
 	tg.river_count = int(_get_spinbox(gen_controls["river_count"]).value)
+	tg.goldfield_elevation_min = _get_slider(gen_controls["goldfield_elevation_min"]).value
+	# Ensure goldfield moisture min <= max
+	var gf_min = _get_slider(gen_controls["goldfield_moisture_min"]).value
+	var gf_max = _get_slider(gen_controls["goldfield_moisture_max"]).value
+	if gf_min > gf_max:
+		var tmp = gf_min
+		gf_min = gf_max
+		gf_max = tmp
+	tg.goldfield_moisture_min = gf_min
+	tg.goldfield_moisture_max = gf_max
+	# Reflect back to sliders after normalization
+	_get_slider(gen_controls["goldfield_moisture_min"]).value = tg.goldfield_moisture_min
+	_get_slider(gen_controls["goldfield_moisture_max"]).value = tg.goldfield_moisture_max
+	tg.goldfield_noise_threshold = _get_slider(gen_controls["goldfield_noise_threshold"]).value
 
 func _connect_signals():
 	if player:

@@ -6,7 +6,7 @@ signal movement_blocked()
 signal movement_points_depleted()
 
 @export var max_movement_points: int = 20  # Movement points per turn
-@export var sight_range: int = 3
+@export var sight_range: int = 7
 @export var move_speed: float = 200.0
 
 var current_movement_points: int
@@ -69,7 +69,11 @@ func calculate_movement_path_to(target: HexCoordinates) -> Resource:
 		return movement_path_class.new()
 
 	# Use pathfinding to get route with costs
-	var path_coords = hex_grid.find_path_to(current_hex, target)
+	var prefer_roads = false
+	var current_tile = hex_grid.get_tile(current_hex)
+	if current_tile and current_tile.terrain_type == HexTile.TerrainType.ROAD:
+		prefer_roads = true
+	var path_coords = hex_grid.find_path_to(current_hex, target, prefer_roads)
 	return movement_path_class.from_pathfinding_result(path_coords, hex_grid)
 
 func get_reachable_tiles() -> Array[HexCoordinates]:
