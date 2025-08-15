@@ -3,6 +3,7 @@ extends Node2D
 
 signal moved(new_position: HexCoordinates)
 signal movement_blocked()
+signal movement_points_depleted()
 
 @export var max_movement_points: int = 20  # Movement points per turn
 @export var sight_range: int = 3
@@ -63,13 +64,12 @@ func can_move_to(target: HexCoordinates) -> bool:
 	return true
 
 func calculate_movement_path_to(target: HexCoordinates) -> Resource:
+	var movement_path_class = load("res://scripts/hex_system/MovementPath.gd")
 	if not hex_grid:
-		var movement_path_class = load("res://scripts/hex_system/MovementPath.gd")
 		return movement_path_class.new()
-	
+
 	# Use pathfinding to get route with costs
 	var path_coords = hex_grid.find_path_to(current_hex, target)
-	var movement_path_class = load("res://scripts/hex_system/MovementPath.gd")
 	return movement_path_class.from_pathfinding_result(path_coords, hex_grid)
 
 func get_reachable_tiles() -> Array[HexCoordinates]:
@@ -101,9 +101,9 @@ func request_move(target: HexCoordinates) -> bool:
 		movement_blocked.emit()
 		return false
 	
-	print("Player movement request APPROVED - calling move_to")
-	print("Movement will consume ", movement_path.total_cost, " points")
-	move_to(target, movement_path.total_cost)
+	print("Player movement request APPROVED - starting step-by-step movement along path")
+	print("Movement will consume ", movement_path.total_cost, " points across ", movement_path.get_length() - 1, " steps")
+	_move_along_path(movement_path)
 	return true
 
 func move_to(target: HexCoordinates, movement_cost: int = 0):
@@ -153,8 +153,85 @@ func _on_move_complete(target: HexCoordinates):
 	var tile = hex_grid.get_tile(current_hex)
 	if tile and tile.has_encounter:
 		_trigger_encounter(tile)
+
+	# If movement points are fully spent, notify
+	if current_movement_points <= 0:
+		movement_points_depleted.emit()
 	
 	print("=== PLAYER movement fully completed ===")
+
+# New: Move step-by-step along a MovementPath
+func _move_along_path(movement_path: Resource):
+	if is_moving:
+		print("Already moving, ignoring _move_along_path request")
+		return
+	if not movement_path or not movement_path.is_valid or movement_path.get_length() <= 1:
+		print("No steps to move or invalid path")
+		return
+
+	is_moving = true
+	move_path = movement_path.coordinates.duplicate()
+	# Start from the first step after current position
+	_move_step(1)
+
+func _move_step(step_index: int):
+	if step_index >= move_path.size():
+		print("Completed all steps in path")
+		is_moving = false
+		if current_movement_points <= 0:
+			movement_points_depleted.emit()
+		return
+
+	var next_hex: HexCoordinates = move_path[step_index]
+	var tile := hex_grid.get_tile(next_hex)
+	if not tile or not tile.can_move_to():
+		print("Blocked step at ", next_hex._to_string())
+		is_moving = false
+		movement_blocked.emit()
+		return
+
+	var step_cost: int = tile.movement_cost
+	if current_movement_points < step_cost:
+		print("Insufficient points for next step: need ", step_cost, ", have ", current_movement_points)
+		is_moving = false
+		movement_blocked.emit()
+		return
+
+	# Consume cost per step
+	consume_movement_points(step_cost)
+
+	var target_pos = hex_grid.hex_to_pixel(next_hex)
+	var distance = position.distance_to(target_pos)
+	var duration = max(0.05, distance / move_speed)
+
+	var tween = create_tween()
+	tween.tween_property(self, "position", target_pos, duration)
+	tween.tween_callback(func():
+		# Update state at tile arrival
+		current_hex = next_hex
+		hex_grid.update_visibility(current_hex, sight_range)
+		moved.emit(current_hex)
+		# Handle encounter per step
+		var arrived_tile = hex_grid.get_tile(current_hex)
+		if arrived_tile and arrived_tile.has_encounter:
+			_trigger_encounter(arrived_tile)
+		# If we've spent all movement points, and no further steps, notify; otherwise continue
+		if current_movement_points <= 0 and step_index + 1 >= move_path.size():
+			movement_points_depleted.emit()
+		# Continue to next step
+		_move_step(step_index + 1)
+	)
+
+	# Failsafe: if tween fails, force next step after a short delay
+	get_tree().create_timer(max(0.5, duration * 2.0)).timeout.connect(func():
+		if is_moving and current_hex != next_hex:
+			print("Tween fallback triggered for step to ", next_hex._to_string())
+			position = target_pos
+			current_hex = next_hex
+			hex_grid.update_visibility(current_hex, sight_range)
+			moved.emit(current_hex)
+			_move_step(step_index + 1)
+	)
 
 func _trigger_encounter(tile: HexTile):
 	print("Encounter triggered at ", tile.coordinates._to_string())
