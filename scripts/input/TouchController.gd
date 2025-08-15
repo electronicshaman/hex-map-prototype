@@ -16,12 +16,19 @@ var is_dragging: bool = false
 var drag_start_pos: Vector2
 var last_touch_positions: Dictionary = {}
 var initial_pinch_distance: float = 0.0
+var show_reachable_area: bool = false
+var reachable_tiles_cache: Array[HexCoordinates] = []
 
 func _ready():
+	# Ensure this node can receive input events
 	set_process_input(true)
+	set_process_unhandled_input(true)
+	print("TouchController ready - input processing enabled")
 
 func _input(event: InputEvent):
-	# Debug all input events
+	# Debug ALL input events to see if TouchController receives any
+	print("TouchController _input called with event type: ", event.get_class())
+	
 	if event is InputEventMouseButton:
 		print("=== INPUT EVENT: Mouse button - ", event.button_index, " pressed: ", event.pressed, " at: ", event.position, " ===")
 	elif event is InputEventMouseMotion:
@@ -40,6 +47,28 @@ func _input(event: InputEvent):
 		_handle_mouse_button(event)
 	elif event is InputEventMouseMotion:
 		_handle_mouse_motion(event)
+	elif event is InputEventKey:
+		_handle_keyboard(event)
+
+func _unhandled_input(event: InputEvent):
+	# Backup input handler in case _input doesn't work
+	print("TouchController _unhandled_input called with event type: ", event.get_class())
+	
+	# Process mouse motion here if it's not handled elsewhere
+	if event is InputEventMouseMotion:
+		print("UNHANDLED: Mouse motion at: ", event.position)
+		_handle_mouse_motion(event)
+
+func _handle_keyboard(event: InputEventKey):
+	if event.pressed:
+		if event.keycode == KEY_R:  # R key to toggle reachable area
+			toggle_reachable_area_display()
+		elif event.keycode == KEY_SPACE:  # Space to reset movement points
+			if player:
+				player.reset_movement_points()
+				_update_reachable_area_cache()
+				if show_reachable_area:
+					_show_reachable_area()
 
 func _handle_touch(event: InputEventScreenTouch):
 	if event.pressed:
@@ -86,15 +115,15 @@ func _handle_mouse_button(event: InputEventMouseButton):
 			camera.zoom = camera.zoom.clamp(Vector2(0.5, 0.5), Vector2(3.0, 3.0))
 
 func _handle_mouse_motion(event: InputEventMouseMotion):
-	print("=== MOUSE MOTION HANDLER: position ", event.position, " dragging: ", is_dragging, " ===")
+	print("MOUSE MOTION: position ", event.position, " dragging: ", is_dragging)
 	
 	if is_dragging and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) and camera:
 		var delta = event.relative
 		camera.position -= delta / camera.zoom
-		print("Camera drag - new position: ", camera.position)
+		print("Camera dragging - new position: ", camera.position)
 	else:
 		# Always check for hover when not dragging
-		print("Checking hover at position: ", event.position)
+		print("Calling _check_hex_hover with position: ", event.position)
 		_check_hex_hover(event.position)
 
 func _check_hex_click(screen_position: Vector2):
@@ -142,47 +171,104 @@ func _check_hex_click(screen_position: Vector2):
 	print("=== _check_hex_click completed ===")	
 
 func _check_hex_hover(screen_position: Vector2):
-	print("=== _check_hex_hover called with position: ", screen_position, " ===")
+	print("=== _check_hex_hover CALLED with screen position: ", screen_position, " ===")
 	
 	if not hex_grid:
-		print("ERROR: No hex_grid available for hover")
+		print("ERROR: No hex_grid in hover check")
 		return
 	
+	print("Converting screen position to world...")
 	var world_pos = _screen_to_world(screen_position)
-	print("Hover - Screen to world conversion: ", screen_position, " -> ", world_pos)
+	print("World position: ", world_pos)
 	
+	print("Converting world to hex coordinates...")
 	var hex_coords = hex_grid.pixel_to_hex(world_pos)
-	print("Hover - World to hex conversion: ", world_pos, " -> ", hex_coords._to_string())
+	print("Hex coordinates: ", hex_coords._to_string())
 	
+	print("Getting tile at hex coordinates...")
 	var tile = hex_grid.get_tile(hex_coords)
-	print("Hover - Retrieved tile: ", tile != null)
+	print("Tile found: ", tile != null)
 	
-	if tile:
-		print("Hover - Tile found at ", hex_coords._to_string(), " - Explored: ", tile.is_explored)
+	if tile and tile.is_explored:
 		hex_hovered.emit(hex_coords)
 		
-		# Provide visual feedback based on tile state
-		var tiles_to_highlight: Array[HexTile] = [tile]
-		
-		if tile.is_explored:
-			if player and player.can_move_to(hex_coords):
-				# Green: Can move here
-				print("Hover - Highlighting GREEN (can move)")
-				hex_grid.highlight_tiles(tiles_to_highlight, Color.GREEN)
-			else:
-				# Yellow: Explored but can't move (too far or blocked)
-				print("Hover - Highlighting YELLOW (can't move)")
-				hex_grid.highlight_tiles(tiles_to_highlight, Color.YELLOW)
+		# Calculate movement path for preview
+		if player:
+			var movement_path = player.calculate_movement_path_to(hex_coords)
+			print("DEBUG: Hover on ", hex_coords._to_string(), " - calculating path preview")
+			_show_movement_path_preview(movement_path)
 		else:
-			# Red: Not explored yet
-			print("Hover - Highlighting RED (not explored)")
-			hex_grid.highlight_tiles(tiles_to_highlight, Color.RED)
+			hex_grid.clear_highlights()
 	else:
-		# Clear highlights if no tile
-		print("Hover - No tile found, clearing highlights")
+		# Only clear if not showing reachable area, otherwise restore it
+		if show_reachable_area:
+			_show_reachable_area()
+		else:
+			hex_grid.clear_highlights()
+
+func _show_movement_path_preview(movement_path: Resource):
+	# Only clear highlights if we're not showing reachable area
+	if not show_reachable_area:
 		hex_grid.clear_highlights()
 	
-	print("=== _check_hex_hover completed ===")
+	if not movement_path or not movement_path.is_valid or movement_path.is_empty():
+		print("Path preview - Invalid or empty path")
+		if show_reachable_area:
+			_show_reachable_area()  # Restore reachable area display
+		return
+	
+	print("DEBUG: Path preview - Showing path with ", movement_path.get_length(), " steps, cost: ", movement_path.total_cost)
+	
+	# Determine path color based on affordability
+	var path_color: Color
+	var can_afford = movement_path.can_afford(player.get_movement_points_remaining())
+	
+	if can_afford:
+		path_color = Color.YELLOW  # Bright yellow for affordable paths (more visible than cyan)
+		print("DEBUG: Path preview - AFFORDABLE (", movement_path.total_cost, "/", player.get_movement_points_remaining(), ")")
+	else:
+		path_color = Color.ORANGE_RED   # Bright red-orange for unaffordable paths
+		print("DEBUG: Path preview - TOO EXPENSIVE (", movement_path.total_cost, "/", player.get_movement_points_remaining(), ")")
+	
+	# Highlight path tiles
+	var tiles_to_highlight: Array[HexTile] = []
+	for coord in movement_path.coordinates:
+		var tile = hex_grid.get_tile(coord)
+		if tile:
+			tiles_to_highlight.append(tile)
+	
+	print("DEBUG: Highlighting ", tiles_to_highlight.size(), " tiles in path")
+	hex_grid.highlight_tiles(tiles_to_highlight, path_color)
+
+func toggle_reachable_area_display():
+	show_reachable_area = !show_reachable_area
+	print("Reachable area display: ", "ON" if show_reachable_area else "OFF")
+	
+	if show_reachable_area:
+		_update_reachable_area_cache()
+		_show_reachable_area()
+	else:
+		hex_grid.clear_highlights()
+
+func _update_reachable_area_cache():
+	if player:
+		reachable_tiles_cache = player.get_reachable_tiles()
+		print("Updated reachable area cache: ", reachable_tiles_cache.size(), " tiles")
+
+func _show_reachable_area():
+	if not hex_grid or reachable_tiles_cache.is_empty():
+		return
+	
+	# Get tiles to highlight
+	var tiles_to_highlight: Array[HexTile] = []
+	for coord in reachable_tiles_cache:
+		var tile = hex_grid.get_tile(coord)
+		if tile:
+			tiles_to_highlight.append(tile)
+	
+	# Highlight reachable area in bright green
+	hex_grid.highlight_tiles(tiles_to_highlight, Color.LIME_GREEN)
+	print("Showing reachable area: ", tiles_to_highlight.size(), " tiles highlighted")
 
 func _screen_to_world(screen_pos: Vector2) -> Vector2:
 	# Convert screen position to world position using proper Godot 4.4 method

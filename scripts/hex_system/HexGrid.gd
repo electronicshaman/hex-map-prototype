@@ -128,11 +128,54 @@ func find_path_to(start: HexCoordinates, end: HexCoordinates) -> Array[HexCoordi
 	var path: Array[HexCoordinates] = []
 	var current = end
 	
+	# Build path from end to start
 	while current != null and _coord_key(current) in came_from:
 		path.push_front(current)
 		current = came_from[_coord_key(current)]
 	
+	# Add the starting position if we have a valid path
+	if path.size() > 0:
+		path.push_front(start)
+	
 	return path
+
+func find_reachable_tiles(start: HexCoordinates, max_movement_points: int) -> Array[HexCoordinates]:
+	# Use Dijkstra's algorithm to find all tiles reachable within movement budget
+	var reachable: Array[HexCoordinates] = []
+	var frontier = []
+	var cost_so_far = {}
+	
+	frontier.push_back(start)
+	cost_so_far[_coord_key(start)] = 0
+	
+	while frontier.size() > 0:
+		var current = frontier.pop_front()
+		var current_cost = cost_so_far[_coord_key(current)]
+		
+		# Add current tile to reachable if it's not the start position
+		if not current.equals(start):
+			reachable.append(current)
+		
+		# Explore neighbors
+		for neighbor in current.get_all_neighbors():
+			var tile = get_tile(neighbor)
+			if not tile or not tile.can_move_to():
+				continue
+			
+			var new_cost = current_cost + tile.movement_cost
+			var neighbor_key = _coord_key(neighbor)
+			
+			# Skip if this path would exceed movement budget
+			if new_cost > max_movement_points:
+				continue
+			
+			# If we found a better path to this neighbor, update it
+			if neighbor_key not in cost_so_far or new_cost < cost_so_far[neighbor_key]:
+				cost_so_far[neighbor_key] = new_cost
+				_insert_sorted(frontier, neighbor, new_cost)
+	
+	print("Found ", reachable.size(), " tiles reachable within ", max_movement_points, " movement points")
+	return reachable
 
 func _insert_sorted(array: Array, item: HexCoordinates, priority: float):
 	for i in range(array.size()):

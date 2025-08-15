@@ -22,6 +22,14 @@ func _ready():
 	if hex_renderer:
 		hex_renderer.queue_redraw()
 
+func _input(event: InputEvent):
+	# Test if GameController receives input events
+	print("GameController _input called with: ", event.get_class())
+	
+	# Forward to TouchController if it exists
+	if touch_controller and touch_controller.has_method("_input"):
+		touch_controller._input(event)
+
 func _setup_camera():
 	camera = Camera2D.new()
 	camera.name = "MainCamera"
