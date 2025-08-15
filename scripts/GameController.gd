@@ -9,6 +9,9 @@ var hex_renderer: HexRenderer
 var player: Player
 var touch_controller: TouchController
 var camera: Camera2D
+var ui_layer: CanvasLayer
+var regen_panel: PanelContainer
+var gen_controls: Dictionary = {}
 var camp_dialog: AcceptDialog
 
 func _ready():
@@ -24,6 +27,7 @@ func _ready():
 	_setup_player()
 	_setup_input()
 	_connect_signals()
+	_setup_generation_ui()
 	
 	# Force an initial render
 	await get_tree().process_frame
@@ -301,6 +305,148 @@ func _setup_input():
 	# touch_controller.camera = camera
 	# add_child(touch_controller)
 	print("TouchController disabled - using emergency input handling only")
+
+func _setup_generation_ui():
+	# Create a lightweight panel to tweak terrain gen and regenerate
+	ui_layer = CanvasLayer.new()
+	ui_layer.layer = 50
+	add_child(ui_layer)
+
+	regen_panel = PanelContainer.new()
+	regen_panel.name = "RegenPanel"
+	regen_panel.position = Vector2(10, 10)
+	regen_panel.custom_minimum_size = Vector2(320, 0)
+	ui_layer.add_child(regen_panel)
+
+	var vb = VBoxContainer.new()
+	regen_panel.add_child(vb)
+
+	var title = Label.new()
+	title.text = "World Generation"
+	title.add_theme_font_size_override("font_size", 16)
+	vb.add_child(title)
+
+	# Elevation frequency slider
+	gen_controls["elevation_frequency"] = _add_slider(vb, "Elevation Freq", 0.02, 0.3, 0.005)
+	# Moisture frequency slider
+	gen_controls["moisture_frequency"] = _add_slider(vb, "Moisture Freq", 0.02, 0.3, 0.005)
+	# Mountain threshold
+	gen_controls["mountain_threshold"] = _add_slider(vb, "Mountain Threshold", 0.4, 0.8, 0.01)
+	# Warp enabled
+	gen_controls["warp_enabled"] = _add_checkbox(vb, "Warp Enabled")
+	# Warp amplitude
+	gen_controls["warp_amplitude"] = _add_slider(vb, "Warp Amplitude", 0.0, 100.0, 1.0)
+	# River count
+	gen_controls["river_count"] = _add_spinbox(vb, "Rivers", 0, 20, 1)
+
+	# Buttons
+	var hb = HBoxContainer.new()
+	vb.add_child(hb)
+	var regen_btn = Button.new()
+	regen_btn.text = "Regenerate"
+	hb.add_child(regen_btn)
+	var randomize_btn = Button.new()
+	randomize_btn.text = "Randomize Seeds"
+	hb.add_child(randomize_btn)
+
+	# Initialize control values from current generator if available
+	var tg: TerrainGenerator = hex_grid.terrain_generator if hex_grid else null
+	if tg:
+		(_get_slider(gen_controls["elevation_frequency"]).value) = tg.elevation_frequency
+		(_get_slider(gen_controls["moisture_frequency"]).value) = tg.moisture_frequency
+		(_get_slider(gen_controls["mountain_threshold"]).value) = tg.mountain_threshold
+		(_get_checkbox(gen_controls["warp_enabled"]).button_pressed) = tg.warp_enabled
+		(_get_slider(gen_controls["warp_amplitude"]).value) = tg.warp_amplitude
+		(_get_spinbox(gen_controls["river_count"]).value) = tg.river_count
+
+	regen_btn.pressed.connect(func():
+		_apply_generation_settings()
+		if hex_grid and hex_grid.terrain_generator:
+			hex_grid.terrain_generator.regenerate_with_new_settings(hex_grid)
+			if hex_renderer:
+				hex_renderer.update_display()
+			if player:
+				hex_grid.update_visibility(player.current_hex, player.sight_range)
+	)
+
+	randomize_btn.pressed.connect(func():
+		if not hex_grid or not hex_grid.terrain_generator:
+			return
+		var rng = RandomNumberGenerator.new()
+		rng.randomize()
+		hex_grid.terrain_generator.elevation_seed = rng.randi()
+		hex_grid.terrain_generator.moisture_seed = rng.randi()
+		_apply_generation_settings()
+		hex_grid.terrain_generator.regenerate_with_new_settings(hex_grid)
+		if hex_renderer:
+			hex_renderer.update_display()
+		if player:
+			hex_grid.update_visibility(player.current_hex, player.sight_range)
+	)
+
+func _add_slider(parent: VBoxContainer, label_text: String, min_val: float, max_val: float, step: float) -> HBoxContainer:
+	var hb = HBoxContainer.new()
+	parent.add_child(hb)
+	var lbl = Label.new()
+	lbl.text = label_text
+	lbl.custom_minimum_size = Vector2(130, 0)
+	hb.add_child(lbl)
+	var slider = HSlider.new()
+	slider.min_value = min_val
+	slider.max_value = max_val
+	slider.step = step
+	slider.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_child(slider)
+	var val_lbl = Label.new()
+	val_lbl.custom_minimum_size = Vector2(60, 0)
+	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+	val_lbl.text = str(snappedf(slider.value, step))
+	hb.add_child(val_lbl)
+	slider.value_changed.connect(func(v): val_lbl.text = str(snappedf(v, step)))
+	return hb
+
+func _add_spinbox(parent: VBoxContainer, label_text: String, min_val: int, max_val: int, step: int) -> HBoxContainer:
+	var hb = HBoxContainer.new()
+	parent.add_child(hb)
+	var lbl = Label.new()
+	lbl.text = label_text
+	lbl.custom_minimum_size = Vector2(130, 0)
+	hb.add_child(lbl)
+	var spin = SpinBox.new()
+	spin.min_value = min_val
+	spin.max_value = max_val
+	spin.step = step
+	spin.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	hb.add_child(spin)
+	return hb
+
+func _add_checkbox(parent: VBoxContainer, label_text: String) -> HBoxContainer:
+	var hb = HBoxContainer.new()
+	parent.add_child(hb)
+	var chk = CheckBox.new()
+	chk.text = label_text
+	hb.add_child(chk)
+	return hb
+
+func _get_slider(hb: HBoxContainer) -> HSlider:
+	return hb.get_child(1) as HSlider
+
+func _get_spinbox(hb: HBoxContainer) -> SpinBox:
+	return hb.get_child(1) as SpinBox
+
+func _get_checkbox(hb: HBoxContainer) -> CheckBox:
+	return hb.get_child(0) as CheckBox
+
+func _apply_generation_settings():
+	if not hex_grid or not hex_grid.terrain_generator:
+		return
+	var tg: TerrainGenerator = hex_grid.terrain_generator
+	tg.elevation_frequency = _get_slider(gen_controls["elevation_frequency"]).value
+	tg.moisture_frequency = _get_slider(gen_controls["moisture_frequency"]).value
+	tg.mountain_threshold = _get_slider(gen_controls["mountain_threshold"]).value
+	tg.warp_enabled = _get_checkbox(gen_controls["warp_enabled"]).button_pressed
+	tg.warp_amplitude = _get_slider(gen_controls["warp_amplitude"]).value
+	tg.river_count = int(_get_spinbox(gen_controls["river_count"]).value)
 
 func _connect_signals():
 	if player:

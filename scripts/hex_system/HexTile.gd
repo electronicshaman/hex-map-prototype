@@ -32,7 +32,7 @@ func _set_terrain_properties():
 		TerrainType.BUSH:
 			movement_cost = 3
 		TerrainType.CREEK:
-			movement_cost = 2
+			movement_cost = 999  # Impassable river
 		TerrainType.TOWN:
 			movement_cost = 1
 		TerrainType.MOUNTAIN:
