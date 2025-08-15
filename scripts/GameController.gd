@@ -14,6 +14,12 @@ var regen_panel: PanelContainer
 var gen_controls: Dictionary = {}
 var camp_dialog: AcceptDialog
 var last_preview_target: HexCoordinates = null
+var hud_panel: PanelContainer
+var hud_time_label: Label
+var hud_mp_label: Label
+var hud_camp_btn: Button
+var hud_short_btn: Button
+var hud_stim_btn: Button
 
 func _ready():
 	set_process_input(true)
@@ -25,6 +31,8 @@ func _ready():
 	_setup_input()
 	_connect_signals()
 	_setup_generation_ui()
+	_setup_hud()
+	_update_hud()
 	
 	# Force an initial render
 	await get_tree().process_frame
@@ -363,6 +371,106 @@ func _setup_generation_ui():
 			hex_grid.update_visibility(player.current_hex, player.sight_range)
 	)
 
+func _setup_hud():
+	if not ui_layer:
+		return
+	# Create a simple HUD panel showing time of day and MP
+	hud_panel = PanelContainer.new()
+	hud_panel.name = "HudPanel"
+	hud_panel.custom_minimum_size = Vector2(220, 0)
+	# Anchor to top-right corner with 10px margins
+	hud_panel.anchor_left = 1.0
+	hud_panel.anchor_right = 1.0
+	hud_panel.anchor_top = 0.0
+	hud_panel.anchor_bottom = 0.0
+	# Right edge margin
+	hud_panel.offset_right = -10
+	# Compute left offset so panel width stays ~custom_minimum_size.x from right edge
+	hud_panel.offset_left = -10 - hud_panel.custom_minimum_size.x
+	# Top margin
+	hud_panel.offset_top = 10
+	ui_layer.add_child(hud_panel)
+
+	var vb = VBoxContainer.new()
+	hud_panel.add_child(vb)
+
+	var title = Label.new()
+	title.text = "Status"
+	title.add_theme_font_size_override("font_size", 14)
+	vb.add_child(title)
+
+	hud_time_label = Label.new()
+	hud_time_label.text = "Time: 06:00 (Day)"
+	vb.add_child(hud_time_label)
+
+	hud_mp_label = Label.new()
+	hud_mp_label.text = "MP: 0/0"
+	vb.add_child(hud_mp_label)
+
+	# Action buttons
+	var actions_hb = HBoxContainer.new()
+	vb.add_child(actions_hb)
+
+	hud_camp_btn = Button.new()
+	hud_camp_btn.text = "Camp"
+	actions_hb.add_child(hud_camp_btn)
+
+	hud_short_btn = Button.new()
+	hud_short_btn.text = "Short Rest"
+	actions_hb.add_child(hud_short_btn)
+
+	hud_stim_btn = Button.new()
+	hud_stim_btn.text = "Stimulant"
+	actions_hb.add_child(hud_stim_btn)
+
+	# Wire button actions
+	hud_camp_btn.pressed.connect(func():
+		if not player or player.is_moving:
+			return
+		player.camp_full()
+		# Refresh map visuals and visibility after time advance
+		if hex_renderer:
+			hex_renderer.update_display()
+		if hex_grid and player:
+			hex_grid.update_visibility(player.current_hex, player.sight_range)
+		# Update HUD and reachable area display if on
+		_update_hud()
+		if show_reachable_area:
+			_update_reachable_area_cache()
+			_show_reachable_area()
+	)
+
+	hud_short_btn.pressed.connect(func():
+		if not player or player.is_moving:
+			return
+		player.short_rest()
+		_update_hud()
+		if show_reachable_area:
+			_update_reachable_area_cache()
+			_show_reachable_area()
+	)
+
+	hud_stim_btn.pressed.connect(func():
+		if not player or player.is_moving:
+			return
+		player.use_stimulant()
+		_update_hud()
+		if show_reachable_area:
+			_update_reachable_area_cache()
+			_show_reachable_area()
+	)
+
+func _update_hud():
+	if not player or not hud_panel:
+		return
+	# Format hour as HH:00
+	var hh := str(player.current_hour)
+	if player.current_hour < 10:
+		hh = "0" + hh
+	var phase := player.get_time_phase_name() if player.has_method("get_time_phase_name") else ""
+	hud_time_label.text = "Time: %s:00 (%s)" % [hh, phase]
+	hud_mp_label.text = "MP: %d/%d" % [player.get_movement_points_remaining(), player.max_movement_points]
+
 func _add_slider(parent: VBoxContainer, label_text: String, min_val: float, max_val: float, step: float) -> HBoxContainer:
 	var hb = HBoxContainer.new()
 	parent.add_child(hb)
@@ -467,6 +575,11 @@ func _connect_signals():
 		player.moved.connect(_on_player_moved)
 		player.movement_blocked.connect(_on_movement_blocked)
 		player.movement_points_depleted.connect(_on_points_depleted)
+		# HUD updates
+		if player.has_signal("time_changed"):
+			player.time_changed.connect(func(_hour): _update_hud())
+		if player.has_signal("movement_points_changed"):
+			player.movement_points_changed.connect(func(_c, _m): _update_hud())
 	
 	# DISABLED: TouchController connections
 	# if touch_controller:
@@ -484,7 +597,8 @@ func _on_player_moved(new_position: HexCoordinates):
 	
 	# Minimal logging on move to avoid console pauses
 
-	# After each move, check if we are stuck (no affordable adjacent moves)
+	# After each move, update HUD and check if we are stuck (no affordable adjacent moves)
+	_update_hud()
 	_maybe_prompt_camp_if_stuck()
 
 func _on_movement_blocked():
