@@ -8,6 +8,7 @@ signal tile_hovered(tile: HexTile)
 @export var grid_height: int = 30
 @export var hex_size: float = 32.0
 @export var flat_top: bool = false
+@export var terrain_generator: Resource
 
 var tiles: Dictionary = {}
 var tile_map: TileMap
@@ -44,24 +45,16 @@ func _setup_tilemap():
 	add_child(highlight_layer)
 
 func _generate_world():
-	for key in tiles:
-		var tile: HexTile = tiles[key]
-		var noise_val = randf()
-		
-		if noise_val < 0.05:
-			tile.set_terrain(HexTile.TerrainType.TOWN)
-		elif noise_val < 0.15:
-			tile.set_terrain(HexTile.TerrainType.GOLDFIELD)
-		elif noise_val < 0.25:
-			tile.set_terrain(HexTile.TerrainType.CREEK)
-		elif noise_val < 0.35:
-			tile.set_terrain(HexTile.TerrainType.MOUNTAIN)
-		elif noise_val < 0.50:
-			tile.set_terrain(HexTile.TerrainType.BUSH)
-		elif noise_val < 0.60:
-			tile.set_terrain(HexTile.TerrainType.ROAD)
-		else:
-			tile.set_terrain(HexTile.TerrainType.PLAINS)
+	# Create terrain generator if not set
+	if not terrain_generator:
+		terrain_generator = load("res://scripts/hex_system/TerrainGenerator.gd").new()
+		print("Created default TerrainGenerator")
+	
+	# Use natural terrain generation instead of random
+	if terrain_generator.has_method("generate_terrain_for_grid"):
+		terrain_generator.generate_terrain_for_grid(self)
+	else:
+		print("ERROR: terrain_generator doesn't have generate_terrain_for_grid method")
 
 func get_tile(coords: HexCoordinates) -> HexTile:
 	# Check bounds first to avoid unnecessary dictionary lookups
