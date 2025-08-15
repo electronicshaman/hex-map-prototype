@@ -3,9 +3,13 @@ extends Node
 
 signal hex_clicked(coords: HexCoordinates)
 signal hex_hovered(coords: HexCoordinates)
+@warning_ignore("unused_signal")
 signal drag_started(position: Vector2)
+@warning_ignore("unused_signal")
 signal drag_updated(position: Vector2)
+@warning_ignore("unused_signal")
 signal drag_ended(position: Vector2)
+@warning_ignore("unused_signal")
 signal zoom_changed(zoom_delta: float)
 
 @export var hex_grid: HexGrid
@@ -23,21 +27,10 @@ func _ready():
 	# Ensure this node can receive input events
 	set_process_input(true)
 	set_process_unhandled_input(true)
-	print("TouchController ready - input processing enabled")
+	# Debug disabled to avoid log spam
 
 func _input(event: InputEvent):
-	# Debug ALL input events to see if TouchController receives any
-	print("TouchController _input called with event type: ", event.get_class())
-	
-	if event is InputEventMouseButton:
-		print("=== INPUT EVENT: Mouse button - ", event.button_index, " pressed: ", event.pressed, " at: ", event.position, " ===")
-	elif event is InputEventMouseMotion:
-		print("=== INPUT EVENT: Mouse motion at: ", event.position, " ===")
-	elif event is InputEventScreenTouch:
-		print("=== INPUT EVENT: Touch - index: ", event.index, " pressed: ", event.pressed, " ===")
-	
-	# Verify node references
-	print("Node references - hex_grid: ", hex_grid != null, " player: ", player != null, " camera: ", camera != null)
+	# Debug disabled to avoid log spam
 	
 	if event is InputEventScreenTouch:
 		_handle_touch(event)
@@ -51,12 +44,8 @@ func _input(event: InputEvent):
 		_handle_keyboard(event)
 
 func _unhandled_input(event: InputEvent):
-	# Backup input handler in case _input doesn't work
-	print("TouchController _unhandled_input called with event type: ", event.get_class())
-	
 	# Process mouse motion here if it's not handled elsewhere
 	if event is InputEventMouseMotion:
-		print("UNHANDLED: Mouse motion at: ", event.position)
 		_handle_mouse_motion(event)
 
 func _handle_keyboard(event: InputEventKey):
@@ -94,16 +83,12 @@ func _handle_drag(event: InputEventScreenDrag):
 		camera.position -= delta
 
 func _handle_mouse_button(event: InputEventMouseButton):
-	print("=== MOUSE BUTTON HANDLER: button ", event.button_index, " pressed: ", event.pressed, " at: ", event.position, " ===")
-	
 	if event.button_index == MOUSE_BUTTON_LEFT:
 		if event.pressed:
-			print("LEFT CLICK DETECTED - about to call _check_hex_click with position: ", event.position)
 			_check_hex_click(event.position)
 			drag_start_pos = event.position
 			is_dragging = true
 		else:
-			print("Left mouse released - stopping drag")
 			is_dragging = false
 	elif event.button_index == MOUSE_BUTTON_WHEEL_UP:
 		if camera:
@@ -115,79 +100,57 @@ func _handle_mouse_button(event: InputEventMouseButton):
 			camera.zoom = camera.zoom.clamp(Vector2(0.5, 0.5), Vector2(3.0, 3.0))
 
 func _handle_mouse_motion(event: InputEventMouseMotion):
-	print("MOUSE MOTION: position ", event.position, " dragging: ", is_dragging)
-	
+	# Debug disabled to avoid log spam
 	if is_dragging and (event.button_mask & MOUSE_BUTTON_MASK_LEFT) and camera:
 		var delta = event.relative
 		camera.position -= delta / camera.zoom
-		print("Camera dragging - new position: ", camera.position)
 	else:
 		# Always check for hover when not dragging
-		print("Calling _check_hex_hover with position: ", event.position)
 		_check_hex_hover(event.position)
 
 func _check_hex_click(screen_position: Vector2):
-	print("=== _check_hex_click called with position: ", screen_position, " ===")
-	
 	if not hex_grid:
-		print("ERROR: No hex_grid available")
 		return
 	if not player:
-		print("ERROR: No player available")
 		return
 	
 	var world_pos = _screen_to_world(screen_position)
-	print("Screen to world conversion: ", screen_position, " -> ", world_pos)
 	
 	var hex_coords = hex_grid.pixel_to_hex(world_pos)
-	print("World to hex conversion: ", world_pos, " -> ", hex_coords._to_string())
 	
 	# Validate coordinates are within actual grid bounds (40x30 grid = -20 to +19, -15 to +14)
 	if hex_coords.q < -20 or hex_coords.q >= 20 or hex_coords.r < -15 or hex_coords.r >= 15:
-		print("Click outside valid grid bounds: ", hex_coords._to_string())
 		return
 	
 	var tile = hex_grid.get_tile(hex_coords)
-	print("Retrieved tile: ", tile != null)
 	
 	if tile:
-		print("Tile found - Visible: ", tile.is_visible, " Explored: ", tile.is_explored, " Type: ", tile.get_terrain_name())
 		var can_move = player.can_move_to(hex_coords)
-		print("Player can move to tile: ", can_move)
 		
 		if tile.is_explored:
 			if can_move:
-				print("Attempting to move player...")
-				var success = player.request_move(hex_coords)
-				print("Move to ", hex_coords._to_string(), ": ", success)
+				var _success = player.request_move(hex_coords)
 			else:
-				print("Movement blocked by player validation")
+				pass
 		else:
-			print("Tile not explored - cannot move")
+			pass
 		hex_clicked.emit(hex_coords)
 	else:
-		print("No tile found at coordinates")
-	
-	print("=== _check_hex_click completed ===")	
+		pass
 
 func _check_hex_hover(screen_position: Vector2):
-	print("=== _check_hex_hover CALLED with screen position: ", screen_position, " ===")
-	
-	if not hex_grid:
-		print("ERROR: No hex_grid in hover check")
+	# Skip hover work while player is moving to avoid heavy path calculations
+	if player and player.is_moving:
+		if show_reachable_area:
+			_show_reachable_area()
+		else:
+			hex_grid.clear_highlights()
 		return
-	
-	print("Converting screen position to world...")
+	if not hex_grid:
+		return
 	var world_pos = _screen_to_world(screen_position)
-	print("World position: ", world_pos)
-	
-	print("Converting world to hex coordinates...")
 	var hex_coords = hex_grid.pixel_to_hex(world_pos)
-	print("Hex coordinates: ", hex_coords._to_string())
-	
-	print("Getting tile at hex coordinates...")
 	var tile = hex_grid.get_tile(hex_coords)
-	print("Tile found: ", tile != null)
 	
 	if tile and tile.is_explored:
 		hex_hovered.emit(hex_coords)
@@ -195,7 +158,6 @@ func _check_hex_hover(screen_position: Vector2):
 		# Calculate movement path for preview
 		if player:
 			var movement_path = player.calculate_movement_path_to(hex_coords)
-			print("DEBUG: Hover on ", hex_coords._to_string(), " - calculating path preview")
 			_show_movement_path_preview(movement_path)
 		else:
 			hex_grid.clear_highlights()
@@ -212,12 +174,9 @@ func _show_movement_path_preview(movement_path: Resource):
 		hex_grid.clear_highlights()
 	
 	if not movement_path or not movement_path.is_valid or movement_path.is_empty():
-		print("Path preview - Invalid or empty path")
 		if show_reachable_area:
 			_show_reachable_area()  # Restore reachable area display
 		return
-	
-	print("DEBUG: Path preview - Showing path with ", movement_path.get_length(), " steps, cost: ", movement_path.total_cost)
 	
 	# Determine path color based on affordability
 	var path_color: Color
@@ -225,10 +184,8 @@ func _show_movement_path_preview(movement_path: Resource):
 	
 	if can_afford:
 		path_color = Color.YELLOW  # Bright yellow for affordable paths (more visible than cyan)
-		print("DEBUG: Path preview - AFFORDABLE (", movement_path.total_cost, "/", player.get_movement_points_remaining(), ")")
 	else:
 		path_color = Color.ORANGE_RED   # Bright red-orange for unaffordable paths
-		print("DEBUG: Path preview - TOO EXPENSIVE (", movement_path.total_cost, "/", player.get_movement_points_remaining(), ")")
 	
 	# Highlight path tiles
 	var tiles_to_highlight: Array[HexTile] = []
@@ -236,8 +193,6 @@ func _show_movement_path_preview(movement_path: Resource):
 		var tile = hex_grid.get_tile(coord)
 		if tile:
 			tiles_to_highlight.append(tile)
-	
-	print("DEBUG: Highlighting ", tiles_to_highlight.size(), " tiles in path")
 	hex_grid.highlight_tiles(tiles_to_highlight, path_color)
 
 func toggle_reachable_area_display():
@@ -253,7 +208,6 @@ func toggle_reachable_area_display():
 func _update_reachable_area_cache():
 	if player:
 		reachable_tiles_cache = player.get_reachable_tiles()
-		print("Updated reachable area cache: ", reachable_tiles_cache.size(), " tiles")
 
 func _show_reachable_area():
 	if not hex_grid or reachable_tiles_cache.is_empty():
@@ -276,7 +230,6 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 		# Use viewport to get proper mouse position in world coordinates
 		var viewport = get_viewport()
 		var world_pos = viewport.get_camera_2d().get_global_mouse_position()
-		print("Coordinate conversion: screen ", screen_pos, " -> world ", world_pos)
 		return world_pos
 	elif hex_grid:
 		return hex_grid.get_global_transform().affine_inverse() * screen_pos

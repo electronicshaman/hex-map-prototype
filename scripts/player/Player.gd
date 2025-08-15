@@ -32,35 +32,24 @@ func initialize(grid: HexGrid, start_position: HexCoordinates):
 	hex_grid.update_visibility(current_hex, sight_range)
 
 func can_move_to(target: HexCoordinates) -> bool:
-	print("Player movement validation:")
-	print("  Current position: ", current_hex._to_string())
-	print("  Target position: ", target._to_string())
-	print("  Current movement points: ", current_movement_points, "/", max_movement_points)
-	print("  Is moving: ", is_moving)
-	
 	if is_moving:
-		print("  BLOCKED: Player is currently moving")
+		return false
+	# Don't allow requesting a move to the current position
+	if current_hex and target and current_hex.equals(target):
 		return false
 	
 	# Calculate path and cost to target
 	var movement_path = calculate_movement_path_to(target)
 	if not movement_path.is_valid:
-		print("  BLOCKED: No valid path to target")
 		return false
 	
-	print("  Path cost: ", movement_path.total_cost)
-	print("  Path summary: ", movement_path.get_path_summary())
-	
 	if not movement_path.can_afford(current_movement_points):
-		print("  BLOCKED: Insufficient movement points (need ", movement_path.total_cost, ", have ", current_movement_points, ")")
 		return false
 	
 	var target_tile = hex_grid.get_tile(target)
 	if not target_tile or not target_tile.can_move_to():
-		print("  BLOCKED: Target tile blocks movement")
 		return false
-	
-	print("  MOVEMENT ALLOWED - Cost: ", movement_path.total_cost)
+
 	return true
 
 func calculate_movement_path_to(target: HexCoordinates) -> Resource:
@@ -95,18 +84,13 @@ func get_movement_points_remaining() -> int:
 	return current_movement_points
 
 func request_move(target: HexCoordinates) -> bool:
-	print("=== PLAYER request_move called with target: ", target._to_string(), " ===")
-	
 	# Calculate movement cost before validation
 	var movement_path = calculate_movement_path_to(target)
 	
 	if not can_move_to(target):
-		print("Player movement request BLOCKED by can_move_to validation")
 		movement_blocked.emit()
 		return false
-	
-	print("Player movement request APPROVED - starting step-by-step movement along path")
-	print("Movement will consume ", movement_path.total_cost, " points across ", movement_path.get_length() - 1, " steps")
+
 	_move_along_path(movement_path)
 	return true
 
@@ -171,6 +155,7 @@ func _move_along_path(movement_path: Resource):
 		return
 	if not movement_path or not movement_path.is_valid or movement_path.get_length() <= 1:
 		print("No steps to move or invalid path")
+		movement_blocked.emit()
 		return
 
 	is_moving = true

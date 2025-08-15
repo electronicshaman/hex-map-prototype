@@ -26,7 +26,6 @@ func _calculate_costs(hex_grid: HexGrid):
 	if coordinates.size() == 1:
 		is_valid = true
 		total_cost = 0
-		print("MovementPath created - Single tile (no movement), cost: 0")
 		return
 	
 	var running_total = 0
@@ -49,7 +48,6 @@ func _calculate_costs(hex_grid: HexGrid):
 	total_cost = running_total
 	is_valid = true
 	
-	print("MovementPath created - Total cost: ", total_cost, " for ", coordinates.size(), " tiles")
 
 func can_afford(available_points: int) -> bool:
 	return is_valid and total_cost <= available_points

@@ -13,14 +13,11 @@ var ui_layer: CanvasLayer
 var regen_panel: PanelContainer
 var gen_controls: Dictionary = {}
 var camp_dialog: AcceptDialog
+var last_preview_target: HexCoordinates = null
 
 func _ready():
-	print("=== GAMECONTROLLER _ready() START ===")
-	
-	# Try to enable input processing explicitly
 	set_process_input(true)
 	set_process_unhandled_input(true)
-	print("Input processing explicitly enabled")
 	
 	_setup_camera()
 	_setup_hex_grid()
@@ -33,75 +30,35 @@ func _ready():
 	await get_tree().process_frame
 	if hex_renderer:
 		hex_renderer.queue_redraw()
-	
-	# Add a timer to test if node is receiving regular updates
-	var timer = Timer.new()
-	timer.timeout.connect(_debug_timer_tick)
-	timer.wait_time = 2.0
-	timer.autostart = true
-	add_child(timer)
-	print("=== GAMECONTROLLER _ready() COMPLETE - Debug timer started ===")
+
 
 func _debug_timer_tick():
-	print("DEBUG TICK: GameController is alive at: ", Time.get_ticks_msec())
-	
-	# Manual mouse position check since input events aren't working
-	var _mouse_pos = get_global_mouse_position()
-	var viewport_mouse = get_viewport().get_mouse_position()
-	
-	# Check for mouse button state manually
-	var is_mouse_pressed = Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT)
-	
-	# Detect click (mouse was released after being pressed)
-	if was_mouse_pressed and not is_mouse_pressed:
-		print("MANUAL CLICK DETECTED at: ", viewport_mouse)
-		_handle_mouse_click(viewport_mouse)
-	
-	was_mouse_pressed = is_mouse_pressed
-	
-	# Only trigger hover if mouse position changed (no logging)
-	if viewport_mouse != last_mouse_position:
-		_handle_mouse_hover(viewport_mouse)
-		last_mouse_position = viewport_mouse
-	
-	# Check for keyboard input manually
-	if Input.is_key_pressed(KEY_R):
-		if not show_reachable_area:  # Only toggle on first press
-			var fake_event = InputEventKey.new()
-			fake_event.keycode = KEY_R
-			_handle_keyboard_input(fake_event)
+	pass
 
 func _input(event: InputEvent):
-	# Emergency input handling - bypass broken TouchController
-	print("EMERGENCY INPUT: GameController received ", event.get_class())
-	
 	if event is InputEventMouseMotion:
 		_handle_mouse_hover(event.position)
-	elif event is InputEventMouseButton:
-		print("MOUSE BUTTON: ", event.button_index, " pressed: ", event.pressed, " at: ", event.position)
-		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			_handle_mouse_click(event.position)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_handle_mouse_click(event.position)
 	elif event is InputEventKey and event.pressed:
-		print("KEY PRESSED: ", event.keycode)
 		_handle_keyboard_input(event)
 
 func _unhandled_input(event: InputEvent):
-	# Backup emergency input handling
-	print("EMERGENCY UNHANDLED INPUT: GameController received ", event.get_class())
-	
 	if event is InputEventMouseMotion:
 		_handle_mouse_hover(event.position)
-	elif event is InputEventMouseButton:
-		print("UNHANDLED MOUSE BUTTON: ", event.button_index, " pressed: ", event.pressed, " at: ", event.position)
-		if event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
-			_handle_mouse_click(event.position)
+	elif event is InputEventMouseButton and event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+		_handle_mouse_click(event.position)
 	elif event is InputEventKey and event.pressed:
-		print("UNHANDLED KEY PRESSED: ", event.keycode)
 		_handle_keyboard_input(event)
 
 func _handle_mouse_hover(screen_pos: Vector2):
 	if not hex_grid or not player:
 		return
+	# Skip expensive hover work while moving
+	if player.is_moving:
+		if not show_reachable_area:
+			hex_grid.clear_highlights()
+		return
 	
 	# Convert screen to world coordinates
 	var world_pos = _screen_to_world(screen_pos)
@@ -112,51 +69,44 @@ func _handle_mouse_hover(screen_pos: Vector2):
 	# Get tile
 	var tile = hex_grid.get_tile(hex_coords)
 	if tile and tile.is_explored:
+		# Avoid re-calculating preview for the same target repeatedly
+		if last_preview_target and last_preview_target.equals(hex_coords):
+			return
+		last_preview_target = hex_coords
 		_show_path_preview(hex_coords)
 	else:
 		hex_grid.clear_highlights()
+		last_preview_target = null
 
 func _handle_mouse_click(screen_pos: Vector2):
-	print("=== CLICK: Processing click at ", screen_pos, " ===")
-	
 	if not hex_grid or not player:
-		print("Missing hex_grid or player for click")
+		return
+	# Ignore clicks while moving
+	if player.is_moving:
 		return
 	
 	# Convert screen to world coordinates
 	var world_pos = _screen_to_world(screen_pos)
-	print("World position: ", world_pos)
 	
 	# Convert to hex coordinates  
 	var hex_coords = hex_grid.pixel_to_hex(world_pos)
-	print("Hex coordinates: ", hex_coords._to_string())
 	
 	# Check bounds
 	if hex_coords.q < -20 or hex_coords.q >= 20 or hex_coords.r < -15 or hex_coords.r >= 15:
-		print("Click outside valid grid bounds")
 		return
 	
 	# Get tile
 	var tile = hex_grid.get_tile(hex_coords)
 	if tile and tile.is_explored:
-		print("Valid tile found - attempting to move player")
 		if player.can_move_to(hex_coords):
-			var success = player.request_move(hex_coords)
-			print("Move request result: ", success)
-		else:
-			print("Player cannot move to selected tile")
-	else:
-		print("No valid tile or not explored")
+			var _success = player.request_move(hex_coords)
 
 func _handle_keyboard_input(event: InputEventKey):
-	print("=== KEYBOARD: Processing key ", event.keycode, " ===")
-	
 	if event.keycode == KEY_R:  # R key to toggle reachable area
 		_toggle_reachable_area_display()
 	elif event.keycode == KEY_SPACE:  # Space to reset movement points
 		if player:
 			player.reset_movement_points()
-			print("Movement points reset")
 
 var show_reachable_area: bool = false
 var reachable_tiles_cache: Array[HexCoordinates] = []
@@ -202,6 +152,8 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 	return screen_pos
 
 func _show_path_preview(target: HexCoordinates):
+	if not player or player.is_moving:
+		return
 	# Calculate movement path
 	var movement_path = player.calculate_movement_path_to(target)
 	if not movement_path or not movement_path.is_valid:
@@ -530,17 +482,37 @@ func _on_player_moved(new_position: HexCoordinates):
 	
 	hex_renderer.update_display()
 	
-	var tile = hex_grid.get_tile(new_position)
-	if tile:
-		print("Player moved to: ", tile.get_terrain_name(), " at ", new_position._to_string())
+	# Minimal logging on move to avoid console pauses
+
+	# After each move, check if we are stuck (no affordable adjacent moves)
+	_maybe_prompt_camp_if_stuck()
 
 func _on_movement_blocked():
 	print("Movement blocked!")
+	# If we can't proceed and there are no affordable adjacent moves, prompt to camp
+	_maybe_prompt_camp_if_stuck()
 
 func _on_points_depleted():
 	print("Movement points depleted - prompting to camp")
 	if camp_dialog:
 		camp_dialog.popup_centered()
+
+func _maybe_prompt_camp_if_stuck():
+	if not player or not hex_grid or not camp_dialog:
+		return
+	if player.is_moving:
+		return
+	var remaining := player.get_movement_points_remaining()
+	# If out of points, normal depletion flow handles the dialog
+	if remaining <= 0:
+		return
+	# Inspect adjacent tiles for any affordable, passable move
+	for neighbor in player.current_hex.get_all_neighbors():
+		var t: HexTile = hex_grid.get_tile(neighbor)
+		if t and t.can_move_to() and t.movement_cost <= remaining:
+			return
+	# No affordable moves around; prompt to camp
+	camp_dialog.popup_centered()
 
 func _on_hex_clicked(coords: HexCoordinates):
 	var tile = hex_grid.get_tile(coords)
