@@ -3,41 +3,6 @@ extends Resource
 
 @export var map_generation_settings: MapGenerationSettings
 
-# Cached settings for performance
-var elevation_seed: int = 12345
-var moisture_seed: int = 67890
-var elevation_frequency: float = 0.08
-var moisture_frequency: float = 0.18
-var elevation_octaves: int = 4
-var elevation_lacunarity: float = 2.0
-var elevation_gain: float = 0.5
-var moisture_octaves: int = 3
-var moisture_lacunarity: float = 2.0
-var moisture_gain: float = 0.55
-var warp_enabled: bool = true
-var warp_amplitude: float = 40.0
-var warp_frequency: float = 0.03
-
-# Biome thresholds (adjusted for more varied terrain)
-var mountain_threshold: float = 0.6
-var hill_threshold: float = 0.45
-var valley_threshold: float = 0.32
-var high_moisture_threshold: float = 0.58
-var medium_moisture_threshold: float = 0.48
-var low_moisture_threshold: float = 0.38
-
-# Goldfield controls
-var goldfield_elevation_min: float = 0.5
-var goldfield_moisture_min: float = 0.3
-var goldfield_moisture_max: float = 0.7
-var goldfield_noise_threshold: float = 0.4
-
-# Civilization parameters
-var town_count: int = 5
-var town_spacing: float = 8.0
-var river_count: int = 8
-var max_river_length: int = 120
-
 # Noise generators
 var elevation_noise: FastNoiseLite
 var moisture_noise: FastNoiseLite
@@ -45,73 +10,45 @@ var warp_noise_x: FastNoiseLite
 var warp_noise_y: FastNoiseLite
 
 func _init():
-	_load_settings()
 	_setup_noise_generators()
 
-func _load_settings():
+func _ensure_settings():
 	if not map_generation_settings:
 		map_generation_settings = load("res://resources/default_map_generation_settings.tres")
 		print("TerrainGenerator: Loaded default map generation settings")
-	
-	if map_generation_settings:
-		elevation_seed = map_generation_settings.elevation_seed
-		moisture_seed = map_generation_settings.moisture_seed
-		elevation_frequency = map_generation_settings.elevation_frequency
-		moisture_frequency = map_generation_settings.moisture_frequency
-		elevation_octaves = map_generation_settings.elevation_octaves
-		elevation_lacunarity = map_generation_settings.elevation_lacunarity
-		elevation_gain = map_generation_settings.elevation_gain
-		moisture_octaves = map_generation_settings.moisture_octaves
-		moisture_lacunarity = map_generation_settings.moisture_lacunarity
-		moisture_gain = map_generation_settings.moisture_gain
-		warp_enabled = map_generation_settings.warp_enabled
-		warp_amplitude = map_generation_settings.warp_amplitude
-		warp_frequency = map_generation_settings.warp_frequency
-		mountain_threshold = map_generation_settings.mountain_threshold
-		hill_threshold = map_generation_settings.hill_threshold
-		valley_threshold = map_generation_settings.valley_threshold
-		high_moisture_threshold = map_generation_settings.high_moisture_threshold
-		medium_moisture_threshold = map_generation_settings.medium_moisture_threshold
-		low_moisture_threshold = map_generation_settings.low_moisture_threshold
-		goldfield_elevation_min = map_generation_settings.goldfield_elevation_min
-		goldfield_moisture_min = map_generation_settings.goldfield_moisture_min
-		goldfield_moisture_max = map_generation_settings.goldfield_moisture_max
-		goldfield_noise_threshold = map_generation_settings.goldfield_noise_threshold
-		town_count = map_generation_settings.town_count
-		town_spacing = map_generation_settings.town_spacing
-		river_count = map_generation_settings.river_count
-		max_river_length = map_generation_settings.max_river_length
 
 func _setup_noise_generators():
+	_ensure_settings()
+	
 	# Elevation noise - creates mountain ranges and valleys
 	elevation_noise = FastNoiseLite.new()
-	elevation_noise.seed = elevation_seed
-	elevation_noise.frequency = elevation_frequency
+	elevation_noise.seed = map_generation_settings.elevation_seed
+	elevation_noise.frequency = map_generation_settings.elevation_frequency
 	elevation_noise.noise_type = FastNoiseLite.TYPE_PERLIN
 	elevation_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	elevation_noise.fractal_octaves = elevation_octaves
-	elevation_noise.fractal_lacunarity = elevation_lacunarity
-	elevation_noise.fractal_gain = elevation_gain
+	elevation_noise.fractal_octaves = map_generation_settings.elevation_octaves
+	elevation_noise.fractal_lacunarity = map_generation_settings.elevation_lacunarity
+	elevation_noise.fractal_gain = map_generation_settings.elevation_gain
 	
 	# Moisture noise - creates precipitation patterns
 	moisture_noise = FastNoiseLite.new()
-	moisture_noise.seed = moisture_seed
-	moisture_noise.frequency = moisture_frequency
+	moisture_noise.seed = map_generation_settings.moisture_seed
+	moisture_noise.frequency = map_generation_settings.moisture_frequency
 	moisture_noise.noise_type = FastNoiseLite.TYPE_SIMPLEX
 	moisture_noise.fractal_type = FastNoiseLite.FRACTAL_FBM
-	moisture_noise.fractal_octaves = moisture_octaves
-	moisture_noise.fractal_lacunarity = moisture_lacunarity
-	moisture_noise.fractal_gain = moisture_gain
+	moisture_noise.fractal_octaves = map_generation_settings.moisture_octaves
+	moisture_noise.fractal_lacunarity = map_generation_settings.moisture_lacunarity
+	moisture_noise.fractal_gain = map_generation_settings.moisture_gain
 
 	# Domain warp noises for organic perturbation
 	warp_noise_x = FastNoiseLite.new()
-	warp_noise_x.seed = elevation_seed + 101
-	warp_noise_x.frequency = warp_frequency
+	warp_noise_x.seed = map_generation_settings.elevation_seed + map_generation_settings.warp_noise_x_offset
+	warp_noise_x.frequency = map_generation_settings.warp_frequency
 	warp_noise_x.noise_type = FastNoiseLite.TYPE_SIMPLEX
 
 	warp_noise_y = FastNoiseLite.new()
-	warp_noise_y.seed = moisture_seed + 202
-	warp_noise_y.frequency = warp_frequency
+	warp_noise_y.seed = map_generation_settings.moisture_seed + map_generation_settings.warp_noise_y_offset
+	warp_noise_y.frequency = map_generation_settings.warp_frequency
 	warp_noise_y.noise_type = FastNoiseLite.TYPE_SIMPLEX
 
 func generate_terrain_for_grid(hex_grid: HexGrid):
@@ -168,10 +105,10 @@ func _sample_world(hex_grid: HexGrid, coords: HexCoordinates) -> Vector2:
 	return coords.to_pixel(hex_grid.hex_size, hex_grid.flat_top)
 
 func _warp_pos(pos: Vector2) -> Vector2:
-	if not warp_enabled:
+	if not map_generation_settings.warp_enabled:
 		return pos
-	var wx = warp_noise_x.get_noise_2d(pos.x, pos.y) * warp_amplitude
-	var wy = warp_noise_y.get_noise_2d(pos.x + 1000.0, pos.y + 1000.0) * warp_amplitude
+	var wx = warp_noise_x.get_noise_2d(pos.x, pos.y) * map_generation_settings.warp_amplitude
+	var wy = warp_noise_y.get_noise_2d(pos.x + 1000.0, pos.y + 1000.0) * map_generation_settings.warp_amplitude
 	return Vector2(pos.x + wx, pos.y + wy)
 
 func _get_elevation_at(hex_grid: HexGrid, coords: HexCoordinates) -> float:
@@ -188,29 +125,29 @@ func _get_moisture_at(hex_grid: HexGrid, coords: HexCoordinates) -> float:
 
 func _determine_terrain_resource(terrain_db: TerrainDatabase, elevation: float, moisture: float) -> TerrainTypeResource:
 	# High elevation = mountains
-	if elevation > mountain_threshold:
+	if elevation > map_generation_settings.mountain_threshold:
 		return terrain_db.get_terrain_by_name("Mountain")
 	
 	# Hills with high moisture = forests/bush
-	if elevation > hill_threshold and moisture > medium_moisture_threshold:
+	if elevation > map_generation_settings.hill_threshold and moisture > map_generation_settings.medium_moisture_threshold:
 		return terrain_db.get_terrain_by_name("Bush")
 	
 	# Low elevation with high moisture = water features
-	if elevation < valley_threshold and moisture > high_moisture_threshold:
+	if elevation < map_generation_settings.valley_threshold and moisture > map_generation_settings.high_moisture_threshold:
 		return terrain_db.get_terrain_by_name("Creek")
 	
 	# Goldfields near mountains (geological features)
-	if elevation > goldfield_elevation_min and elevation < mountain_threshold and moisture > goldfield_moisture_min and moisture < goldfield_moisture_max:
-		var geo_noise = elevation_noise.get_noise_2d(elevation * 200.0, moisture * 200.0)
-		if geo_noise > goldfield_noise_threshold:
+	if elevation > map_generation_settings.goldfield_elevation_min and elevation < map_generation_settings.mountain_threshold and moisture > map_generation_settings.goldfield_moisture_min and moisture < map_generation_settings.goldfield_moisture_max:
+		var geo_noise = elevation_noise.get_noise_2d(elevation * map_generation_settings.noise_scale_factor, moisture * map_generation_settings.noise_scale_factor)
+		if geo_noise > map_generation_settings.goldfield_noise_threshold:
 			return terrain_db.get_terrain_by_name("Goldfield")
 	
 	# Very dry areas = plains  
-	if moisture < low_moisture_threshold:
+	if moisture < map_generation_settings.low_moisture_threshold:
 		return terrain_db.get_terrain_by_name("Plains")
 	
 	# Medium moisture areas = more bush/forest
-	if moisture > medium_moisture_threshold:
+	if moisture > map_generation_settings.medium_moisture_threshold:
 		return terrain_db.get_terrain_by_name("Bush")
 	
 	# Default to plains for remaining areas
@@ -226,7 +163,7 @@ func _carve_rivers(hex_grid: HexGrid):
 		var tile: HexTile = hex_grid.tiles[key]
 		var elev = _get_elevation_at(hex_grid, tile.coordinates)
 		var terrain_name = tile.get_terrain_name()
-		if elev > hill_threshold and terrain_name not in ["Mountain", "Town"]:
+		if elev > map_generation_settings.hill_threshold and terrain_name not in ["Mountain", "Town"]:
 			candidates.append({"coord": tile.coordinates, "elev": elev})
 
 	if candidates.is_empty():
@@ -234,7 +171,7 @@ func _carve_rivers(hex_grid: HexGrid):
 
 	# Sort by elevation descending and pick top sources
 	candidates.sort_custom(func(a, b): return a["elev"] > b["elev"])
-	var count = min(river_count, candidates.size())
+	var count = min(map_generation_settings.river_count, candidates.size())
 	for i in range(count):
 		_flow_river_from(hex_grid, candidates[i]["coord"])
 
@@ -243,7 +180,7 @@ func _flow_river_from(hex_grid: HexGrid, start: HexCoordinates):
 	var visited := {}
 	var current := start
 	var length := 0
-	while length < max_river_length:
+	while length < map_generation_settings.max_river_length:
 		length += 1
 		visited[_coord_key(current)] = true
 		var current_elev = _get_elevation_at(hex_grid, current)
@@ -282,11 +219,8 @@ func _place_civilization_features(hex_grid: HexGrid):
 	# Random single-tile settlements
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
-	var settlements_count = rng.randi_range(2, 5)
-	var min_distance = 6
-	if map_generation_settings:
-		settlements_count = rng.randi_range(map_generation_settings.settlement_min_count, map_generation_settings.settlement_max_count)
-		min_distance = map_generation_settings.settlement_min_distance
+	var settlements_count = rng.randi_range(map_generation_settings.settlement_min_count, map_generation_settings.settlement_max_count)
+	var min_distance = map_generation_settings.settlement_min_distance
 		
 	var settlement_locations: Array[HexCoordinates] = []
 
@@ -295,8 +229,7 @@ func _place_civilization_features(hex_grid: HexGrid):
 		forbidden[_coord_key(c)] = true
 
 	var attempts = 0
-	var max_attempts = 1000
-	while settlement_locations.size() < settlements_count and attempts < max_attempts:
+	while settlement_locations.size() < settlements_count and attempts < map_generation_settings.max_settlement_attempts:
 		attempts += 1
 		var coord = _random_coord_within_grid(hex_grid, rng)
 		if _is_suitable_for_settlement(hex_grid, coord, forbidden, min_distance):
@@ -310,14 +243,8 @@ func _place_civilization_features(hex_grid: HexGrid):
 			t.set_terrain_resource(terrain_db.get_terrain_by_name("Town"))
 
 	# Place gold mines and deposits based on settings
-	var mines = 5
-	var deposits = 5
-	if map_generation_settings:
-		mines = rng.randi_range(map_generation_settings.goldfield_mine_count_min, map_generation_settings.goldfield_mine_count_max)
-		deposits = rng.randi_range(map_generation_settings.goldfield_deposit_count_min, map_generation_settings.goldfield_deposit_count_max)
-	else:
-		mines = rng.randi_range(5, 10)
-		deposits = rng.randi_range(5, 10)
+	var mines = rng.randi_range(map_generation_settings.goldfield_mine_count_min, map_generation_settings.goldfield_mine_count_max)
+	var deposits = rng.randi_range(map_generation_settings.goldfield_deposit_count_min, map_generation_settings.goldfield_deposit_count_max)
 	
 	_place_gold_features(hex_grid, rng, mines, true, forbidden)
 	_place_gold_features(hex_grid, rng, deposits, false, forbidden)
@@ -378,8 +305,7 @@ func _place_gold_features(hex_grid: HexGrid, rng: RandomNumberGenerator, count: 
 	var terrain_db = hex_grid.terrain_database
 	var placed = 0
 	var tries = 0
-	var max_tries = 2000
-	while placed < count and tries < max_tries:
+	while placed < count and tries < map_generation_settings.max_placement_attempts:
 		tries += 1
 		var coord = _random_coord_within_grid(hex_grid, rng)
 		var key = _coord_key(coord)
@@ -414,13 +340,13 @@ func _find_town_locations(hex_grid: HexGrid) -> Array[HexCoordinates]:
 	
 	# Select well-spaced town locations
 	var attempts = 0
-	while town_locations.size() < town_count and attempts < suitable_locations.size():
+	while town_locations.size() < map_generation_settings.town_count and attempts < suitable_locations.size():
 		var candidate = suitable_locations[randi() % suitable_locations.size()]
 		
 		# Check if far enough from existing towns
 		var too_close = false
 		for existing_town in town_locations:
-			if candidate.distance_to(existing_town) < town_spacing:
+			if candidate.distance_to(existing_town) < map_generation_settings.town_spacing:
 				too_close = true
 				break
 		
@@ -514,8 +440,9 @@ func _post_process_terrain(hex_grid: HexGrid):
 	print("Post-processing terrain for natural appearance...")
 	
 	# Smooth isolated tiles and apply majority smoothing passes
-	_smooth_isolated_tiles(hex_grid)
-	_majority_smooth(hex_grid, 2)
+	if map_generation_settings.smooth_isolated_tiles:
+		_smooth_isolated_tiles(hex_grid)
+	_majority_smooth(hex_grid, map_generation_settings.majority_smoothing_passes)
 	
 	# Add variety to large uniform areas
 	_add_terrain_variety(hex_grid)
@@ -586,7 +513,6 @@ func _add_terrain_variety(_hex_grid: HexGrid):
 
 # Utility function to regenerate with new parameters
 func regenerate_with_new_settings(hex_grid: HexGrid):
-	_load_settings()
 	_setup_noise_generators()
 	generate_terrain_for_grid(hex_grid)
 
@@ -629,7 +555,7 @@ func _majority_smooth(hex_grid: HexGrid, passes: int = 1):
 					best_count = counts[t_name]
 					best_terrain_name = t_name
 			# Apply if there is a strong local majority
-			if best_terrain_name != terrain_name and best_count >= 3:
+			if best_terrain_name != terrain_name and best_count >= map_generation_settings.majority_smoothing_threshold:
 				var best_resource = terrain_db.get_terrain_by_name(best_terrain_name)
 				if best_resource:
 					changes.append([tile, best_resource])

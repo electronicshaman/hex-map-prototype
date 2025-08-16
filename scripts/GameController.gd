@@ -7,7 +7,6 @@ extends Node2D
 var hex_grid: HexGrid
 var hex_renderer: HexRenderer
 var player: Player
-var touch_controller: TouchController
 var camera: Camera2D
 var ui_layer: CanvasLayer
 var regen_panel: PanelContainer
@@ -39,8 +38,6 @@ func _ready():
 		hex_renderer.queue_redraw()
 
 
-func _debug_timer_tick():
-	pass
 
 func _input(event: InputEvent):
 	if event is InputEventMouseMotion:
@@ -98,8 +95,9 @@ func _handle_mouse_click(screen_pos: Vector2):
 	# Convert to hex coordinates  
 	var hex_coords = hex_grid.pixel_to_hex(world_pos)
 	
-	# Check bounds
-	if hex_coords.q < -20 or hex_coords.q >= 20 or hex_coords.r < -15 or hex_coords.r >= 15:
+	# Check bounds using grid settings
+	var settings = _get_map_settings()
+	if hex_coords.q < settings.min_q or hex_coords.q >= settings.max_q or hex_coords.r < settings.min_r or hex_coords.r >= settings.max_r:
 		return
 	
 	# Get tile
@@ -117,8 +115,6 @@ func _handle_keyboard_input(event: InputEventKey):
 
 var show_reachable_area: bool = false
 var reachable_tiles_cache: Array[HexCoordinates] = []
-var last_mouse_position: Vector2 = Vector2.ZERO
-var was_mouse_pressed: bool = false
 
 func _toggle_reachable_area_display():
 	show_reachable_area = !show_reachable_area
@@ -218,14 +214,8 @@ func _setup_player():
 	print("Camera positioned at: ", camera.position)
 
 func _setup_input():
-	# DISABLED: TouchController is broken and consuming all input
-	# touch_controller = TouchController.new()
-	# touch_controller.name = "TouchController"
-	# touch_controller.hex_grid = hex_grid
-	# touch_controller.player = player
-	# touch_controller.camera = camera
-	# add_child(touch_controller)
-	print("TouchController disabled - using emergency input handling only")
+	# Input is handled directly in _input() and _unhandled_input()
+	pass
 
 func _setup_generation_ui():
 	# Create a lightweight panel to tweak terrain gen and regenerate
@@ -559,10 +549,6 @@ func _connect_signals():
 		if player.has_signal("movement_points_changed"):
 			player.movement_points_changed.connect(func(_c, _m): _update_hud())
 	
-	# DISABLED: TouchController connections
-	# if touch_controller:
-	#	touch_controller.hex_clicked.connect(_on_hex_clicked)
-	#	touch_controller.hex_hovered.connect(_on_hex_hovered)
 
 
 
@@ -616,3 +602,9 @@ func _process(_delta):
 	# Only update display when needed
 	if hex_renderer and (player.is_moving or Input.is_action_just_pressed("ui_accept")):
 		hex_renderer.update_display()
+
+func _get_map_settings() -> MapGenerationSettings:
+	if hex_grid and hex_grid.terrain_generator and hex_grid.terrain_generator.map_generation_settings:
+		return hex_grid.terrain_generator.map_generation_settings
+	# Fallback to default settings
+	return load("res://resources/default_map_generation_settings.tres")

@@ -7,6 +7,12 @@ extends Resource
 @export var hex_size: float = 32.0
 @export var flat_top: bool = false
 
+@export_group("Grid Bounds")
+@export var min_q: int = -40
+@export var max_q: int = 40
+@export var min_r: int = -30
+@export var max_r: int = 30
+
 @export_group("Noise Seeds")
 @export var elevation_seed: int = 12345
 @export var moisture_seed: int = 67890
@@ -58,3 +64,11 @@ extends Resource
 @export_group("Post-Processing")
 @export var smooth_isolated_tiles: bool = true
 @export var majority_smoothing_passes: int = 2
+
+@export_group("Generation Constants")
+@export var noise_scale_factor: float = 200.0
+@export var warp_noise_x_offset: int = 101
+@export var warp_noise_y_offset: int = 202
+@export var max_placement_attempts: int = 2000
+@export var max_settlement_attempts: int = 1000
+@export var majority_smoothing_threshold: int = 3
