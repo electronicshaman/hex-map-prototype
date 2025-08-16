@@ -60,8 +60,8 @@ func generate_terrain_for_grid(hex_grid: HexGrid):
 	# Phase 2: Carve rivers along downhill paths from high elevation sources
 	_carve_rivers(hex_grid)
 
-	# Phase 3: Place civilization features after rivers, so roads route around them
-	_place_civilization_features(hex_grid)
+	# Phase 3: Generate civilization (settlements, resources, roads)
+	_generate_civilization(hex_grid)
 	
 	# Phase 4: Post-process for natural appearance
 	_post_process_terrain(hex_grid)
@@ -209,232 +209,30 @@ func _flow_river_from(hex_grid: HexGrid, start: HexCoordinates):
 			break
 		current = lowest_neighbor
 
-func _place_civilization_features(hex_grid: HexGrid):
-	print("Placing civilization features (center town, settlements, roads, gold)...")
-	var terrain_db = hex_grid.terrain_database
-
-	# Center 7-hex town at (0,0)
-	var center_cluster: Array[HexCoordinates] = _place_center_town(hex_grid)
-
-	# Random single-tile settlements
+func _generate_civilization(hex_grid: HexGrid):
+	var civilization_generator = CivilizationGenerator.new()
+	
+	# Create civilization settings from map generation settings
+	var civ_settings = CivilizationSettings.new()
+	civ_settings.settlement_min_count = map_generation_settings.settlement_min_count
+	civ_settings.settlement_max_count = map_generation_settings.settlement_max_count
+	civ_settings.settlement_min_distance = map_generation_settings.settlement_min_distance
+	civ_settings.max_settlement_attempts = map_generation_settings.max_settlement_attempts
+	civ_settings.goldfield_mine_count_min = map_generation_settings.goldfield_mine_count_min
+	civ_settings.goldfield_mine_count_max = map_generation_settings.goldfield_mine_count_max
+	civ_settings.goldfield_deposit_count_min = map_generation_settings.goldfield_deposit_count_min
+	civ_settings.goldfield_deposit_count_max = map_generation_settings.goldfield_deposit_count_max
+	civ_settings.max_placement_attempts = map_generation_settings.max_placement_attempts
+	civ_settings.town_count = map_generation_settings.town_count
+	civ_settings.town_spacing = map_generation_settings.town_spacing
+	
+	civilization_generator.civilization_settings = civ_settings
+	
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
-	var settlements_count = rng.randi_range(map_generation_settings.settlement_min_count, map_generation_settings.settlement_max_count)
-	var min_distance = map_generation_settings.settlement_min_distance
-		
-	var settlement_locations: Array[HexCoordinates] = []
-
-	var forbidden: Dictionary = {}
-	for c in center_cluster:
-		forbidden[_coord_key(c)] = true
-
-	var attempts = 0
-	while settlement_locations.size() < settlements_count and attempts < map_generation_settings.max_settlement_attempts:
-		attempts += 1
-		var coord = _random_coord_within_grid(hex_grid, rng)
-		if _is_suitable_for_settlement(hex_grid, coord, forbidden, min_distance):
-			settlement_locations.append(coord)
-			forbidden[_coord_key(coord)] = true
-
-	# Place settlements
-	for loc in settlement_locations:
-		var t = hex_grid.get_tile(loc)
-		if t:
-			t.set_terrain_resource(terrain_db.get_terrain_by_name("Town"))
-
-	# Place gold mines and deposits based on settings
-	var mines = rng.randi_range(map_generation_settings.goldfield_mine_count_min, map_generation_settings.goldfield_mine_count_max)
-	var deposits = rng.randi_range(map_generation_settings.goldfield_deposit_count_min, map_generation_settings.goldfield_deposit_count_max)
 	
-	_place_gold_features(hex_grid, rng, mines, true, forbidden)
-	_place_gold_features(hex_grid, rng, deposits, false, forbidden)
+	var civilization_data = civilization_generator.generate_civilization_for_grid(hex_grid, rng)
 
-	# Roads: connect each settlement to the center via low-cost path
-	for s in settlement_locations:
-		var path = _find_low_cost_path(hex_grid, HexCoordinates.new(0, 0), s)
-		for c in path:
-			var tile = hex_grid.get_tile(c)
-			if tile:
-				var terrain_name = tile.get_terrain_name()
-				if terrain_name not in ["Town", "Mountain", "Creek"]:
-					tile.set_terrain_resource(terrain_db.get_terrain_by_name("Road"))
-
-	print("Placed ", settlement_locations.size(), " settlements and center town")
-
-func _place_center_town(hex_grid: HexGrid) -> Array[HexCoordinates]:
-	var terrain_db = hex_grid.terrain_database
-	var center = HexCoordinates.new(0, 0)
-	var coords: Array[HexCoordinates] = [center]
-	# Add the six neighbors
-	for n in center.get_all_neighbors():
-		coords.append(n)
-	for c in coords:
-		var tile = hex_grid.get_tile(c)
-		if tile:
-			tile.set_terrain_resource(terrain_db.get_terrain_by_name("Town"))
-	return coords
-
-func _random_coord_within_grid(hex_grid: HexGrid, rng: RandomNumberGenerator) -> HexCoordinates:
-	var hw = hex_grid.grid_width >> 1
-	var hh = hex_grid.grid_height >> 1
-	var q = rng.randi_range(-hw, hw - 1)
-	var r = rng.randi_range(-hh, hh - 1)
-	return HexCoordinates.new(q, r)
-
-func _is_suitable_for_settlement(hex_grid: HexGrid, coord: HexCoordinates, forbidden: Dictionary, min_dist: int) -> bool:
-	var key = _coord_key(coord)
-	if key in forbidden:
-		return false
-	var tile = hex_grid.get_tile(coord)
-	if not tile:
-		return false
-	var terrain_name = tile.get_terrain_name()
-	if terrain_name in ["Mountain", "Creek", "Town"]:
-		return false
-	# Keep away from existing forbidden set by min_dist
-	for fkey in forbidden.keys():
-		var parts = fkey.split(",")
-		var fq = int(parts[0])
-		var fr = int(parts[1])
-		var fcoord = HexCoordinates.new(fq, fr)
-		if coord.distance_to(fcoord) < min_dist:
-			return false
-	return true
-
-func _place_gold_features(hex_grid: HexGrid, rng: RandomNumberGenerator, count: int, is_mine: bool, forbidden: Dictionary):
-	var terrain_db = hex_grid.terrain_database
-	var placed = 0
-	var tries = 0
-	while placed < count and tries < map_generation_settings.max_placement_attempts:
-		tries += 1
-		var coord = _random_coord_within_grid(hex_grid, rng)
-		var key = _coord_key(coord)
-		if key in forbidden:
-			continue
-		var tile = hex_grid.get_tile(coord)
-		if not tile:
-			continue
-		var terrain_name = tile.get_terrain_name()
-		if terrain_name in ["Mountain", "Creek", "Town", "Road"]:
-			continue
-		# Place goldfield and annotate
-		tile.set_terrain_resource(terrain_db.get_terrain_by_name("Goldfield"))
-		tile.has_encounter = true
-		tile.encounter_data = {
-			"resource": "gold",
-			"kind": ("mine" if is_mine else "deposit")
-		}
-		forbidden[key] = true
-		placed += 1
-
-func _find_town_locations(hex_grid: HexGrid) -> Array[HexCoordinates]:
-	var suitable_locations: Array[HexCoordinates] = []
-	var town_locations: Array[HexCoordinates] = []
-	
-	# Find all suitable locations (not mountains, not creeks)
-	for key in hex_grid.tiles:
-		var tile: HexTile = hex_grid.tiles[key]
-		var terrain_name = tile.get_terrain_name()
-		if terrain_name in ["Plains", "Goldfield"]:
-			suitable_locations.append(tile.coordinates)
-	
-	# Select well-spaced town locations
-	var attempts = 0
-	while town_locations.size() < map_generation_settings.town_count and attempts < suitable_locations.size():
-		var candidate = suitable_locations[randi() % suitable_locations.size()]
-		
-		# Check if far enough from existing towns
-		var too_close = false
-		for existing_town in town_locations:
-			if candidate.distance_to(existing_town) < map_generation_settings.town_spacing:
-				too_close = true
-				break
-		
-		if not too_close:
-			town_locations.append(candidate)
-		
-		attempts += 1
-	
-	return town_locations
-
-func _generate_roads_between_towns(hex_grid: HexGrid, town_locations: Array[HexCoordinates]):
-	var terrain_db = hex_grid.terrain_database
-	# Connect each town to nearest neighbors via low-cost paths avoiding mountains/creeks
-	for i in range(town_locations.size()):
-		var start = town_locations[i]
-		# Find nearest k towns
-		var pairs: Array = []
-		for j in range(town_locations.size()):
-			if i == j:
-				continue
-			var end = town_locations[j]
-			pairs.append({"end": end, "dist": start.distance_to(end)})
-		pairs.sort_custom(func(a, b): return a["dist"] < b["dist"])
-		var connect_count = min(2, pairs.size())
-		for k in range(connect_count):
-			var end: HexCoordinates = pairs[k]["end"]
-			var path = _find_low_cost_path(hex_grid, start, end)
-			if path.size() > 0:
-				for coord in path:
-					var tile = hex_grid.get_tile(coord)
-					if tile:
-						var terrain_name = tile.get_terrain_name()
-						if terrain_name not in ["Town", "Mountain", "Creek"]:
-							tile.set_terrain_resource(terrain_db.get_terrain_by_name("Road"))
-
-func _find_low_cost_path(hex_grid: HexGrid, start: HexCoordinates, end: HexCoordinates) -> Array[HexCoordinates]:
-	# A* variant with terrain costs; block mountains/creeks to make roads organic around features
-	var frontier: Array[HexCoordinates] = []
-	var priority_map: Dictionary = {}
-	var came_from: Dictionary = {}
-	var g_cost: Dictionary = {}
-
-	var terrain_cost_cb: Callable = func(c: HexCoordinates) -> int:
-		var t = hex_grid.get_tile(c)
-		if not t:
-			return 9999
-		var terrain_name = t.get_terrain_name()
-		match terrain_name:
-			"Mountain", "Creek":
-				return 9999 # treat as impassable for roads
-			"Bush":
-				return 3
-			"Goldfield":
-				return 2
-			"Plains":
-				return 1
-			"Town", "Road":
-				return 1
-			_:
-				return 2
-
-	frontier.push_back(start)
-	priority_map[_coord_key(start)] = 0.0
-	came_from[_coord_key(start)] = null
-	g_cost[_coord_key(start)] = 0
-
-	while frontier.size() > 0:
-		var node: HexCoordinates = frontier.pop_front()
-		if node.equals(end):
-			break
-		for neighbor in node.get_all_neighbors():
-			var step = terrain_cost_cb.call(neighbor)
-			if step >= 9999:
-				continue
-			var new_cost = g_cost[_coord_key(node)] + step
-			var key = _coord_key(neighbor)
-			if key not in g_cost or new_cost < g_cost[key]:
-				g_cost[key] = new_cost
-				var priority = float(new_cost + neighbor.distance_to(end))
-				_insert_sorted(frontier, neighbor, priority, priority_map)
-				came_from[key] = node
-
-	var path: Array[HexCoordinates] = []
-	var cursor: HexCoordinates = end
-	while cursor != null and _coord_key(cursor) in came_from:
-		path.push_front(cursor)
-		cursor = came_from[_coord_key(cursor)]
-	return path
 
 func _post_process_terrain(hex_grid: HexGrid):
 	print("Post-processing terrain for natural appearance...")

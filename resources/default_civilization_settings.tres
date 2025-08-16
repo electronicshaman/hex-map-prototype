@@ -1,0 +1,28 @@
+[gd_resource type="Resource" script_class="CivilizationSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/CivilizationSettings.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+village_size = 1
+town_size = 3
+city_size = 7
+capital_size = 19
+settlement_min_count = 2
+settlement_max_count = 5
+settlement_min_distance = 6
+max_settlement_attempts = 1000
+mining_town_probability = 0.3
+trading_post_probability = 0.2
+farming_village_probability = 0.5
+goldfield_mine_count_min = 5
+goldfield_mine_count_max = 10
+goldfield_deposit_count_min = 5
+goldfield_deposit_count_max = 10
+max_placement_attempts = 2000
+road_development_rate = 1.0
+bridge_construction_cost = 5
+tunnel_construction_cost = 10
+road_connections_per_settlement = 2
+town_count = 5
+town_spacing = 8.0
