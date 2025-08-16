@@ -238,11 +238,11 @@ func _setup_hex_grid():
 	hex_grid = HexGrid.new()
 	hex_grid.name = "HexGrid"
 	add_child(hex_grid)
-    
+	
 	hex_renderer = HexRenderer.new(hex_grid)
 	hex_renderer.name = "HexRenderer"
 	hex_grid.add_child(hex_renderer)
-    
+	
 	print("HexGrid created with ", hex_grid.tiles.size(), " tiles")
 	print("HexRenderer created with size: ", hex_renderer.hex_size)
 
@@ -250,10 +250,10 @@ func _setup_player():
 	player = Player.new()
 	player.name = "Player"
 	hex_grid.add_child(player)
-    
+	
 	var start_pos = HexCoordinates.new(0, 0)
 	player.initialize(hex_grid, start_pos)
-    
+	
 	camera.position = player.position
 	print("Player created at: ", player.position)
 	print("Camera positioned at: ", camera.position)
