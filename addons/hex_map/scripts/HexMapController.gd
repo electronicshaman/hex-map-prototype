@@ -11,11 +11,11 @@ const HudPanel = preload("res://addons/hex_map/scripts/ui/HudPanel.gd")
 @export var manage_camera := true
 @export var show_generation_ui := true
 @export var show_hud := true
-@export var map_settings: MapGenerationSettings
+@export var map_settings: Resource # MapGenerationSettings
 
-var hex_grid: HexGrid
-var hex_renderer: HexRenderer
-var player: Player
+var hex_grid
+var hex_renderer
+var player
 var camera: Camera2D
 var ui_layer: CanvasLayer
 var generation_panel
@@ -23,9 +23,11 @@ var last_preview_target: HexCoordinates = null
 var hud_panel
 
 func _ready():
+	# Avoid running gameplay code while editing in the scene tree
+	if Engine.is_editor_hint():
+		return
 	set_process_input(true)
 	set_process_unhandled_input(true)
-	
 	_setup_camera()
 	_setup_hex_grid()
 	# Inject editor-provided settings if present
@@ -342,9 +344,16 @@ func _setup_player():
 func _setup_input():
 	pass
 
-func _get_map_settings() -> MapGenerationSettings:
+func _get_map_settings():
 	if map_settings:
 		return map_settings
 	if hex_grid and hex_grid.terrain_generator and hex_grid.terrain_generator.map_generation_settings:
 		return hex_grid.terrain_generator.map_generation_settings
-	return load("res://resources/default_map_generation_settings.tres")
+	# Optional: if the addon ships a default, prefer it here
+	var addon_default := "res://addons/hex_map/resources/default_map_generation_settings.tres"
+	if ResourceLoader.exists(addon_default):
+		return load(addon_default)
+	var project_default := "res://resources/default_map_generation_settings.tres"
+	if ResourceLoader.exists(project_default):
+		return load(project_default)
+	return null
