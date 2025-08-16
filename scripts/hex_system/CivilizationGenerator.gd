@@ -59,38 +59,3 @@ func _log_civilization_stats(data: CivilizationData):
 # Utility function for coordinate keys (shared by all components)
 static func coord_key(c: HexCoordinates) -> String:
 	return "%d,%d" % [c.q, c.r]
-
-# Data container for civilization generation results
-class_name CivilizationData
-extends RefCounted
-
-var settlements: Array[SettlementData] = []
-var resources: Array[ResourceData] = []
-var roads: Array[HexCoordinates] = []
-
-class_name SettlementData
-extends RefCounted
-
-var coordinates: HexCoordinates
-var settlement_type: String # "village", "town", "city", "capital"
-var size: int # Number of hexes
-var specialization: String # "mining", "trading", "farming", "general"
-var occupied_hexes: Array[HexCoordinates] = []
-
-func _init(coords: HexCoordinates, type: String, settlement_size: int):
-	coordinates = coords
-	settlement_type = type
-	size = settlement_size
-
-class_name ResourceData
-extends RefCounted
-
-var coordinates: HexCoordinates
-var resource_type: String # "gold_mine", "gold_deposit", etc.
-var quality: String # "poor", "good", "rich"
-var encounter_data: Dictionary
-
-func _init(coords: HexCoordinates, type: String):
-	coordinates = coords
-	resource_type = type
-	quality = "good" # Default quality

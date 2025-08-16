@@ -3,8 +3,12 @@ extends RefCounted
 
 var civilization_settings: CivilizationSettings
 
-func place_settlements(hex_grid: HexGrid, rng: RandomNumberGenerator) -> Array[SettlementData]:
-	var settlements: Array[SettlementData] = []
+func _init():
+	if not civilization_settings:
+		civilization_settings = CivilizationSettings.new()
+
+func place_settlements(hex_grid: HexGrid, rng: RandomNumberGenerator) -> Array:
+	var settlements: Array = []
 	var forbidden: Dictionary = {}
 	
 	# Step 1: Place center capital at (0,0)
@@ -24,7 +28,7 @@ func _place_center_capital(hex_grid: HexGrid, forbidden: Dictionary) -> Settleme
 	capital.specialization = "administration"
 	
 	# Get all hexes for the capital (center + neighbors for 7-hex cluster)
-	var capital_hexes: Array[HexCoordinates] = [center]
+	var capital_hexes: Array = [center]
 	for neighbor in center.get_all_neighbors():
 		capital_hexes.append(neighbor)
 	
@@ -39,8 +43,8 @@ func _place_center_capital(hex_grid: HexGrid, forbidden: Dictionary) -> Settleme
 	
 	return capital
 
-func _place_distributed_settlements(hex_grid: HexGrid, rng: RandomNumberGenerator, forbidden: Dictionary) -> Array[SettlementData]:
-	var settlements: Array[SettlementData] = []
+func _place_distributed_settlements(hex_grid: HexGrid, rng: RandomNumberGenerator, forbidden: Dictionary) -> Array:
+	var settlements: Array = []
 	
 	var settlements_count = rng.randi_range(
 		civilization_settings.settlement_min_count,
