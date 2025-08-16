@@ -49,7 +49,7 @@ func build():
 	_get_slider(gen_controls["sight_range"]).value_changed.connect(func(v): emit_signal("sight_range_changed", v))
 	_get_slider(gen_controls["camera_zoom"]).value_changed.connect(func(v): emit_signal("camera_zoom_changed", v))
 
-func set_from_settings(s: MapGenerationSettings, sight_range: int, camera_zoom: float):
+func set_from_settings(s, sight_range: int, camera_zoom: float):
 	_get_slider(gen_controls["elevation_frequency"]).value = s.elevation_frequency
 	_get_slider(gen_controls["moisture_frequency"]).value = s.moisture_frequency
 	_get_slider(gen_controls["mountain_threshold"]).value = s.mountain_threshold
@@ -68,7 +68,7 @@ func set_from_settings(s: MapGenerationSettings, sight_range: int, camera_zoom: 
 	_get_slider(gen_controls["sight_range"]).value = float(sight_range)
 	_get_slider(gen_controls["camera_zoom"]).value = float(camera_zoom)
 
-func apply_to_settings(s: MapGenerationSettings) -> Dictionary:
+func apply_to_settings(s) -> Dictionary:
 	s.elevation_frequency = _get_slider(gen_controls["elevation_frequency"]).value
 	s.moisture_frequency = _get_slider(gen_controls["moisture_frequency"]).value
 	s.mountain_threshold = _get_slider(gen_controls["mountain_threshold"]).value

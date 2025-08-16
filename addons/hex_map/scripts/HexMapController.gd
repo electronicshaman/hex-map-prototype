@@ -5,8 +5,11 @@ extends Node2D
 # Addon wrapper that reuses the existing MapController logic.
 # It preloads GenerationPanel/HudPanel from the addon path and embeds the same behavior.
 
-const GenerationPanel = preload("res://addons/hex_map/scripts/ui/GenerationPanel.gd")
-const HudPanel = preload("res://addons/hex_map/scripts/ui/HudPanel.gd")
+var _gen_panel_path := "res://addons/hex_map/scripts/ui/GenerationPanel.gd"
+var _hud_panel_path := "res://addons/hex_map/scripts/ui/HudPanel.gd"
+func _new_ui(path: String):
+	var c = load(path)
+	return c and c.new() or null
 
 @export var manage_camera := true
 @export var show_generation_ui := true
@@ -157,7 +160,7 @@ func _setup_generation_ui():
 	ui_layer = CanvasLayer.new()
 	ui_layer.layer = 50
 	add_child(ui_layer)
-	generation_panel = GenerationPanel.new()
+	generation_panel = _new_ui(_gen_panel_path)
 	ui_layer.add_child(generation_panel)
 	generation_panel.build()
 	var tg = hex_grid.terrain_generator if hex_grid else null
@@ -204,7 +207,7 @@ func _setup_hud():
 		ui_layer = CanvasLayer.new()
 		ui_layer.layer = 50
 		add_child(ui_layer)
-	hud_panel = HudPanel.new()
+	hud_panel = _new_ui(_hud_panel_path)
 	ui_layer.add_child(hud_panel)
 	hud_panel.build()
 	hud_panel.camp_pressed.connect(func():
