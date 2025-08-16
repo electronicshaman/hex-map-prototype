@@ -19,7 +19,7 @@ var player
 var camera: Camera2D
 var ui_layer: CanvasLayer
 var generation_panel
-var last_preview_target: HexCoordinates = null
+var last_preview_target = null
 var hud_panel
 
 func _ready():
@@ -62,7 +62,7 @@ func _unhandled_input(event: InputEvent):
 		_handle_keyboard_input(event)
 
 var show_reachable_area: bool = false
-var reachable_tiles_cache: Array[HexCoordinates] = []
+var reachable_tiles_cache: Array = []
 
 # --- Copy of core helpers from MapController ---
 # For brevity, we call into helper functions stored in this file (same content as MapController).
@@ -137,14 +137,14 @@ func _screen_to_world(screen_pos: Vector2) -> Vector2:
 		return camera.get_global_mouse_position()
 	return screen_pos
 
-func _show_path_preview(target: HexCoordinates):
+func _show_path_preview(target):
 	if not player or player.is_moving:
 		return
 	var movement_path = player.calculate_movement_path_to(target)
 	if not movement_path or not movement_path.is_valid:
 		return
 	var path_color: Color = Color.YELLOW if movement_path.can_afford(player.get_movement_points_remaining()) else Color.ORANGE_RED
-	var tiles_to_highlight: Array[HexTile] = []
+	var tiles_to_highlight: Array = []
 	for coord in movement_path.coordinates:
 		var tile = hex_grid.get_tile(coord)
 		if tile:
@@ -160,7 +160,7 @@ func _setup_generation_ui():
 	generation_panel = GenerationPanel.new()
 	ui_layer.add_child(generation_panel)
 	generation_panel.build()
-	var tg: TerrainGenerator = hex_grid.terrain_generator if hex_grid else null
+	var tg = hex_grid.terrain_generator if hex_grid else null
 	if tg and tg.map_generation_settings:
 		generation_panel.set_from_settings(tg.map_generation_settings, player.sight_range if player else 6, camera.zoom.x if camera else 1.0)
 	generation_panel.regenerate_pressed.connect(func():
@@ -242,17 +242,19 @@ func _setup_hud():
 func _update_hud():
 	if not player or not hud_panel:
 		return
-	var hh := str(player.current_hour)
+	var hh = str(player.current_hour)
 	if player.current_hour < 10:
 		hh = "0" + hh
-	var phase := player.get_time_phase_name() if player.has_method("get_time_phase_name") else ""
+	var phase = ""
+	if player.has_method("get_time_phase_name"):
+		phase = player.get_time_phase_name()
 	hud_panel.set_time_and_mp("Time: %s:00 (%s)" % [hh, phase], "MP: %d/%d" % [player.get_movement_points_remaining(), player.max_movement_points])
 
 func _apply_generation_settings():
 	if not hex_grid or not hex_grid.terrain_generator:
 		return
-	var tg: TerrainGenerator = hex_grid.terrain_generator
-	var s := tg.map_generation_settings
+	var tg = hex_grid.terrain_generator
+	var s = tg.map_generation_settings
 	if not s:
 		s = _get_map_settings()
 		tg.map_generation_settings = s
@@ -274,7 +276,7 @@ func _connect_signals():
 		if player.has_signal("movement_points_changed"):
 			player.movement_points_changed.connect(func(_c, _m): _update_hud())
 
-func _on_player_moved(new_position: HexCoordinates):
+func _on_player_moved(new_position):
 	var target_pos = hex_grid.hex_to_pixel(new_position)
 	var tween = create_tween()
 	tween.tween_property(camera, "position", target_pos, 0.3)
@@ -293,15 +295,15 @@ func _maybe_prompt_camp_if_stuck():
 		return
 	if player.is_moving:
 		return
-	var remaining := player.get_movement_points_remaining()
+	var remaining = player.get_movement_points_remaining()
 	if remaining <= 0:
 		return
 	for neighbor in player.current_hex.get_all_neighbors():
-		var t: HexTile = hex_grid.get_tile(neighbor)
+	var t = hex_grid.get_tile(neighbor)
 		if t and t.can_move_to() and t.get_movement_cost() <= remaining:
 			return
 
-func _on_hex_clicked(coords: HexCoordinates):
+func _on_hex_clicked(coords):
 	var tile = hex_grid.get_tile(coords)
 	if tile:
 		print("Clicked: ", tile.get_terrain_name(), " at ", coords._to_string())
@@ -324,19 +326,31 @@ func _setup_camera():
 	add_child(camera)
 	camera.make_current()
 
+func _new_from(path: String):
+	var cls = load(path)
+	if cls:
+		return cls.new()
+	push_error("HexMapController: missing script " + path)
+	return null
+
 func _setup_hex_grid():
-	hex_grid = HexGrid.new()
+	# Load project HexGrid script dynamically to avoid parse-time dependency
+	hex_grid = _new_from("res://scripts/hex_system/HexGrid.gd")
 	hex_grid.name = "HexGrid"
 	add_child(hex_grid)
-	hex_renderer = HexRenderer.new(hex_grid)
+	# HexRenderer takes grid in its _init
+	var hr_cls = load("res://scripts/hex_system/HexRenderer.gd")
+	if hr_cls:
+		hex_renderer = hr_cls.new(hex_grid)
 	hex_renderer.name = "HexRenderer"
 	hex_grid.add_child(hex_renderer)
 
 func _setup_player():
-	player = Player.new()
+	player = _new_from("res://scripts/player/Player.gd")
 	player.name = "Player"
 	hex_grid.add_child(player)
-	var start_pos = HexCoordinates.new(0, 0)
+	var coords_cls = load("res://scripts/hex_system/HexCoordinates.gd")
+	var start_pos = coords_cls and coords_cls.new(0, 0) or null
 	player.initialize(hex_grid, start_pos)
 	if camera:
 		camera.position = player.position
