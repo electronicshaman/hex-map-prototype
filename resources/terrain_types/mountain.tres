@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="TerrainTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/TerrainTypeResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+terrain_name = "Mountain"
+movement_cost = 999
+passable = false
+buildable = false
+base_color = Color(0.266667, 0.266667, 0.266667, 1)
+dimmed_color = Color(0.133333, 0.133333, 0.133333, 1)
+outline_color = Color(0, 0, 0, 1)
+visibility_modifier = 1.5
+defense_bonus = 3
+resource_yield = 0.5
+blocks_line_of_sight = true
+provides_water = false
+is_road = false
+is_settlement = false
+dawn_movement_modifier = 0
+day_movement_modifier = 0
+dusk_movement_modifier = 0
+night_movement_modifier = 0
+prohibit_night_movement = false

@@ -12,7 +12,6 @@ var camera: Camera2D
 var ui_layer: CanvasLayer
 var regen_panel: PanelContainer
 var gen_controls: Dictionary = {}
-var camp_dialog: AcceptDialog
 var last_preview_target: HexCoordinates = null
 var hud_panel: PanelContainer
 var hud_time_label: Label
@@ -181,7 +180,7 @@ func _show_path_preview(target: HexCoordinates):
 		if tile:
 			tiles_to_highlight.append(tile)
 	
-	hex_grid.highlight_tiles(tiles_to_highlight, path_color)
+	hex_grid.highlight_tiles(tiles_to_highlight, path_color, Color.RED)
 
 func _setup_camera():
 	camera = Camera2D.new()
@@ -217,27 +216,6 @@ func _setup_player():
 	camera.position = player.position
 	print("Player created at: ", player.position)
 	print("Camera positioned at: ", camera.position)
-
-	# Setup camp dialog UI
-	camp_dialog = AcceptDialog.new()
-	camp_dialog.dialog_text = "You've used all movement points. Camp to restore them?"
-	camp_dialog.title = "Camp"
-	# Add a button for Camp action
-	var _camp_button = camp_dialog.add_button("Camp", true, "camp")
-	# Add a cancel button
-	camp_dialog.get_ok_button().text = "Cancel"
-	add_child(camp_dialog)
-	# Handle custom Camp action via dialog signal
-	camp_dialog.custom_action.connect(func(action: StringName):
-		if action == "camp":
-			player.reset_movement_points()
-			print("Player camped and restored movement points")
-			# Refresh reachable highlight if enabled
-			if show_reachable_area:
-				_update_reachable_area_cache()
-				_show_reachable_area()
-			camp_dialog.hide()
-	)
 
 func _setup_input():
 	# DISABLED: TouchController is broken and consuming all input
@@ -607,26 +585,24 @@ func _on_movement_blocked():
 	_maybe_prompt_camp_if_stuck()
 
 func _on_points_depleted():
-	print("Movement points depleted - prompting to camp")
-	if camp_dialog:
-		camp_dialog.popup_centered()
+	print("Movement points depleted - use HUD Camp button to restore")
 
 func _maybe_prompt_camp_if_stuck():
-	if not player or not hex_grid or not camp_dialog:
+	if not player or not hex_grid:
 		return
 	if player.is_moving:
 		return
 	var remaining := player.get_movement_points_remaining()
-	# If out of points, normal depletion flow handles the dialog
+	# If out of points, normal depletion flow handles this
 	if remaining <= 0:
 		return
 	# Inspect adjacent tiles for any affordable, passable move
 	for neighbor in player.current_hex.get_all_neighbors():
 		var t: HexTile = hex_grid.get_tile(neighbor)
-		if t and t.can_move_to() and t.movement_cost <= remaining:
+		if t and t.can_move_to() and t.get_movement_cost() <= remaining:
 			return
-	# No affordable moves around; prompt to camp
-	camp_dialog.popup_centered()
+	# No affordable moves around; player is stuck but has points
+	print("Player is stuck - use HUD Camp button to restore movement points")
 
 func _on_hex_clicked(coords: HexCoordinates):
 	var tile = hex_grid.get_tile(coords)

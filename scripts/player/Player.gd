@@ -7,13 +7,16 @@ signal movement_points_depleted()
 signal time_changed(current_hour: int)
 signal movement_points_changed(current: int, max_val: int)
 
-@export var max_movement_points: int = 20  # Movement points per turn
-@export var sight_range: int = 7
-@export var move_speed: float = 200.0
-@export var start_hour: int = 6  # 0-23
-@export var prohibit_night_movement: bool = false  # If true, cannot move during Night
-@export var guide_active: bool = false  # If true, reduce effective terrain costs
-@export var guide_reduction: int = 1  # Movement cost reduction when guide is active
+@export var game_settings: GameSettings
+
+# Cached settings for performance
+var max_movement_points: int = 20
+var sight_range: int = 7
+var move_speed: float = 200.0
+var start_hour: int = 6
+var prohibit_night_movement: bool = false
+var guide_active: bool = false
+var guide_reduction: int = 1
 
 var current_hour: int = 6  # 0-23 time of day
 var stimulant_crash_in_hours: int = -1
@@ -27,6 +30,7 @@ var is_moving: bool = false
 var move_path: Array[HexCoordinates] = []
 
 func _ready():
+	_load_settings()
 	current_hex = HexCoordinates.new(0, 0)
 	current_movement_points = max_movement_points
 	current_hour = start_hour % 24
@@ -36,6 +40,7 @@ func _ready():
 		hex_grid.update_visibility(current_hex, sight_range)
 
 func initialize(grid: HexGrid, start_position: HexCoordinates):
+	_load_settings()
 	hex_grid = grid
 	current_hex = start_position
 	current_movement_points = max_movement_points
@@ -44,6 +49,20 @@ func initialize(grid: HexGrid, start_position: HexCoordinates):
 	hex_grid.update_visibility(current_hex, sight_range)
 	time_changed.emit(current_hour)
 	movement_points_changed.emit(current_movement_points, max_movement_points)
+
+func _load_settings():
+	if not game_settings:
+		game_settings = load("res://resources/default_game_settings.tres")
+		print("Player: Loaded default game settings")
+	
+	if game_settings:
+		max_movement_points = game_settings.max_movement_points
+		sight_range = game_settings.sight_range
+		move_speed = game_settings.move_speed
+		start_hour = game_settings.start_hour
+		prohibit_night_movement = game_settings.prohibit_night_movement
+		guide_active = game_settings.guide_active
+		guide_reduction = game_settings.guide_cost_reduction
 
 func can_move_to(target: HexCoordinates) -> bool:
 	if is_moving:
@@ -77,7 +96,7 @@ func calculate_movement_path_to(target: HexCoordinates) -> Resource:
 	# Use pathfinding to get route with costs
 	var prefer_roads = false
 	var current_tile = hex_grid.get_tile(current_hex)
-	if current_tile and current_tile.terrain_type == HexTile.TerrainType.ROAD:
+	if current_tile and current_tile.terrain_resource and current_tile.terrain_resource.is_road:
 		prefer_roads = true
 	var path_coords = hex_grid.find_path_to(current_hex, target, prefer_roads)
 	var mp: Resource = movement_path_class.from_pathfinding_result(path_coords, hex_grid)
@@ -90,7 +109,7 @@ func calculate_movement_path_to(target: HexCoordinates) -> Resource:
 		for i in range(1, mp.get_length()):
 			var coord: HexCoordinates = mp.coordinates[i]
 			var tile := hex_grid.get_tile(coord)
-			var base_cost: int = tile.movement_cost if tile else 1
+			var base_cost: int = tile.get_movement_cost() if tile else 1
 			var reduction_val: int = guide_reduction if guide_active else 0
 			var eff: int = max(1, base_cost + mod - reduction_val)
 			adj_individual.append(eff)
@@ -225,7 +244,7 @@ func _move_step(step_index: int):
 		is_moving = false
 		movement_blocked.emit()
 		return
-	var base_cost: int = tile.movement_cost
+	var base_cost: int = tile.get_movement_cost()
 	var eff_mod: int = _time_of_day_modifier()
 	var reduction: int = guide_reduction if guide_active else 0
 	var step_cost: int = max(1, base_cost + eff_mod - reduction)
@@ -293,7 +312,9 @@ func _advance_time(hours: int):
 	time_changed.emit(current_hour)
 
 func _time_of_day_modifier() -> int:
-	# Day: 0, Dawn/Dusk: +1, Night: +2
+	if game_settings:
+		return game_settings.get_movement_modifier(current_hour)
+	# Fallback: Day: 0, Dawn/Dusk: +1, Night: +2
 	if _is_night():
 		return 2
 	elif _is_dawn() or _is_dusk():
@@ -301,18 +322,30 @@ func _time_of_day_modifier() -> int:
 	return 0
 
 func _is_dawn() -> bool:
+	if game_settings:
+		return current_hour >= game_settings.dawn_start_hour and current_hour < game_settings.dawn_end_hour
 	return current_hour >= 5 and current_hour < 7
 
 func _is_day() -> bool:
+	if game_settings:
+		return current_hour >= game_settings.day_start_hour and current_hour < game_settings.day_end_hour
 	return current_hour >= 7 and current_hour < 18
 
 func _is_dusk() -> bool:
+	if game_settings:
+		return current_hour >= game_settings.dusk_start_hour and current_hour < game_settings.dusk_end_hour
 	return current_hour >= 18 and current_hour < 20
 
 func _is_night() -> bool:
+	if game_settings:
+		var phase = game_settings.get_time_phase(current_hour)
+		return phase == "Night"
 	return current_hour >= 20 or current_hour < 5
 
 func get_time_phase_name() -> String:
+	if game_settings:
+		return game_settings.get_time_phase(current_hour)
+	# Fallback
 	if _is_night():
 		return "Night"
 	if _is_dusk():
@@ -326,8 +359,20 @@ func camp_full():
 	var safe := false
 	if hex_grid:
 		var tile := hex_grid.get_tile(current_hex)
-		safe = tile and tile.terrain_type == HexTile.TerrainType.TOWN
-	if safe:
+		safe = tile and tile.terrain_resource and tile.terrain_resource.is_settlement
+	
+	var safe_full_recovery = true
+	var success_chance = 0.6
+	var min_rec = 2
+	var max_rec = 5
+	
+	if game_settings:
+		safe_full_recovery = game_settings.safe_camp_full_recovery
+		success_chance = game_settings.wilderness_camp_success_chance
+		min_rec = game_settings.wilderness_camp_min_recovery
+		max_rec = game_settings.wilderness_camp_max_recovery
+	
+	if safe and safe_full_recovery:
 		# Advance to next 6am and restore full MP
 		var to_morning := (24 + 6 - current_hour) % 24
 		if to_morning == 0:
@@ -335,10 +380,10 @@ func camp_full():
 		_advance_time(to_morning)
 		reset_movement_points()
 	else:
-		# Wilderness risk: 60% chance full rest to morning, else partial interrupted
+		# Wilderness risk
 		var rng = RandomNumberGenerator.new()
 		rng.randomize()
-		if rng.randf() < 0.6:
+		if rng.randf() < success_chance:
 			var to_morning2 := (24 + 6 - current_hour) % 24
 			if to_morning2 == 0:
 				to_morning2 = 24
@@ -350,27 +395,43 @@ func camp_full():
 			if to_morning3 == 0:
 				to_morning3 = 24
 			_advance_time(to_morning3)
-			var rec := rng.randi_range(2, 5)
+			var rec := rng.randi_range(min_rec, max_rec)
 			current_movement_points = min(max_movement_points, current_movement_points + rec)
 			movement_points_changed.emit(current_movement_points, max_movement_points)
 
 func short_rest():
-	# 2-hour rest, recover 2-3 MP
-	_advance_time(2)
+	var rest_hours = 2
+	var min_rec = 2
+	var max_rec = 3
+	
+	if game_settings:
+		rest_hours = game_settings.short_rest_hours
+		min_rec = game_settings.short_rest_min_recovery
+		max_rec = game_settings.short_rest_max_recovery
+	
+	_advance_time(rest_hours)
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
-	var rec := rng.randi_range(2, 3)
+	var rec := rng.randi_range(min_rec, max_rec)
 	current_movement_points = min(max_movement_points, current_movement_points + rec)
 	movement_points_changed.emit(current_movement_points, max_movement_points)
 
 func use_stimulant():
-	# Grant +2-3 temporary MP; crash after 6 hours subtracts same amount
+	var min_bonus = 2
+	var max_bonus = 3
+	var crash_hours = 6
+	
+	if game_settings:
+		min_bonus = game_settings.stimulant_min_bonus
+		max_bonus = game_settings.stimulant_max_bonus
+		crash_hours = game_settings.stimulant_crash_hours
+	
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
-	var bonus := rng.randi_range(2, 3)
+	var bonus := rng.randi_range(min_bonus, max_bonus)
 	current_movement_points = min(max_movement_points, current_movement_points + bonus)
 	stimulant_crash_amount = bonus
-	stimulant_crash_in_hours = 6
+	stimulant_crash_in_hours = crash_hours
 	movement_points_changed.emit(current_movement_points, max_movement_points)
 
 func get_valid_moves() -> Array[HexCoordinates]:

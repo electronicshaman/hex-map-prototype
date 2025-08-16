@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="TerrainTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/TerrainTypeResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+terrain_name = "Road"
+movement_cost = 1
+passable = true
+buildable = true
+base_color = Color(0.54902, 0.270588, 0.0745098, 1)
+dimmed_color = Color(0.27451, 0.135294, 0.0372549, 1)
+outline_color = Color(0, 0, 0, 1)
+visibility_modifier = 1.1
+defense_bonus = 0
+resource_yield = 1.0
+blocks_line_of_sight = false
+provides_water = false
+is_road = true
+is_settlement = false
+dawn_movement_modifier = 0
+day_movement_modifier = 0
+dusk_movement_modifier = 0
+night_movement_modifier = 0
+prohibit_night_movement = false

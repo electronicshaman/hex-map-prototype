@@ -28,16 +28,23 @@ func _draw_hex_tile(tile: HexTile):
 	var center = tile.coordinates.to_pixel(hex_size, flat_top)
 	var points = _get_hex_points(center)
 	
-	var color = tile.get_terrain_color()
-	if not tile.is_visible and tile.is_explored:
-		color = color.darkened(0.5)
-	elif not tile.is_explored:
-		color = Color.BLACK
+	var color = Color.WHITE
+	if tile.terrain_resource:
+		color = tile.terrain_resource.get_display_color(tile.is_visible, tile.is_explored)
+	else:
+		# Fallback colors if no terrain resource
+		if not tile.is_explored:
+			color = Color.BLACK
+		elif not tile.is_visible:
+			color = Color.DARK_GRAY
 	
 	draw_colored_polygon(points, color)
 
 	# Draw outlines for all terrains (including roads and creeks)
 	var outline_color = Color.BLACK if tile.is_explored else Color.DARK_GRAY
+	if tile.terrain_resource and tile.is_explored:
+		outline_color = tile.terrain_resource.outline_color
+	
 	for i in range(points.size()):
 		var next_i = (i + 1) % points.size()
 		draw_line(points[i], points[next_i], outline_color, 1.0)

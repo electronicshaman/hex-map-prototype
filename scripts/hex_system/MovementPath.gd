@@ -40,7 +40,7 @@ func _calculate_costs(hex_grid: HexGrid):
 			print("MovementPath failed - No tile at ", coord._to_string())
 			return
 		
-		var tile_cost = tile.movement_cost
+		var tile_cost = tile.get_movement_cost()
 		individual_costs.append(tile_cost)
 		running_total += tile_cost
 		cumulative_costs.append(running_total)

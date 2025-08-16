@@ -9,6 +9,7 @@ signal tile_hovered(tile: HexTile)
 @export var hex_size: float = 32.0
 @export var flat_top: bool = false
 @export var terrain_generator: Resource
+@export var terrain_database: TerrainDatabase
 
 var tiles: Dictionary = {}
 var tile_map: TileMap
@@ -21,11 +22,17 @@ func _ready():
 	_generate_world()
 
 func _initialize_grid():
+	# Load default terrain database if not set
+	if not terrain_database:
+		terrain_database = load("res://resources/default_terrain_database.tres")
+		print("Loaded default terrain database")
+	
+	var default_terrain = terrain_database.get_terrain_by_name("Plains")
 	var count = 0
 	for q in range(-_half_w(), _half_w()):
 		for r in range(-_half_h(), _half_h()):
 			var coords = HexCoordinates.new(q, r)
-			var tile = HexTile.new(coords, HexTile.TerrainType.PLAINS)
+			var tile = HexTile.new(coords, default_terrain)
 			# Start unseen and unexplored; visibility will be updated around player
 			tile.set_visibility(false)
 			tiles[_coord_key(coords)] = tile
@@ -122,16 +129,16 @@ func find_path_to(start: HexCoordinates, end: HexCoordinates, prefer_roads: bool
 			if not tile or not tile.can_move_to():
 				continue
 
-			var step_cost: float = float(tile.movement_cost)
+			var step_cost: float = float(tile.get_movement_cost())
 			if prefer_roads:
 				var current_tile = get_tile(current_node)
-				if current_tile and current_tile.terrain_type == HexTile.TerrainType.ROAD:
+				if current_tile and current_tile.terrain_resource and current_tile.terrain_resource.is_road:
 					# Prefer staying on roads; small penalty for leaving road
-					if tile.terrain_type == HexTile.TerrainType.ROAD:
+					if tile.terrain_resource and tile.terrain_resource.is_road:
 						step_cost *= 0.5
 					else:
 						step_cost += 0.5
-				elif current_tile and current_tile.terrain_type != HexTile.TerrainType.ROAD and tile.terrain_type == HexTile.TerrainType.ROAD:
+				elif current_tile and current_tile.terrain_resource and not current_tile.terrain_resource.is_road and tile.terrain_resource and tile.terrain_resource.is_road:
 					# Slight incentive to move onto a road
 					step_cost -= 0.25
 			var new_cost = float(cost_so_far[_coord_key(current_node)]) + step_cost
@@ -178,7 +185,7 @@ func find_reachable_tiles(start: HexCoordinates, max_movement_points: int) -> Ar
 			if not tile or not tile.can_move_to():
 				continue
 
-			var new_cost = current_cost + tile.movement_cost
+			var new_cost = current_cost + tile.get_movement_cost()
 			var neighbor_key = _coord_key(neighbor)
 
 			# Skip if this path would exceed movement budget
@@ -208,7 +215,7 @@ func _insert_sorted(array: Array, item: HexCoordinates, priority: float, priorit
 func _coord_key(coords: HexCoordinates) -> String:
 	return "%d,%d" % [coords.q, coords.r]
 
-func highlight_tiles(tiles_to_highlight: Array[HexTile], color: Color):
+func highlight_tiles(tiles_to_highlight: Array[HexTile], color: Color, border_color: Color = Color.TRANSPARENT):
 	for child in highlight_layer.get_children():
 		child.queue_free()
 	
@@ -220,6 +227,19 @@ func highlight_tiles(tiles_to_highlight: Array[HexTile], color: Color):
 		poly.z_index = 100
 		poly.z_as_relative = false
 		highlight_layer.add_child(poly)
+		
+		# Add border if border_color is specified
+		if border_color != Color.TRANSPARENT:
+			var border := Line2D.new()
+			border.width = 3.0
+			border.default_color = border_color
+			border.closed = true
+			border.z_index = 101
+			border.z_as_relative = false
+			var points = _get_hex_points(center)
+			for point in points:
+				border.add_point(point)
+			highlight_layer.add_child(border)
 
 func clear_highlights():
 	for child in highlight_layer.get_children():
@@ -270,7 +290,7 @@ func save_grid() -> Dictionary:
 func load_grid(save_data: Dictionary):
 	tiles.clear()
 	for key in save_data:
-		tiles[key] = HexTile.from_dict(save_data[key])
+		tiles[key] = HexTile.from_dict(save_data[key], terrain_database)
 
 # Helpers to avoid integer-division warnings and keep bounds consistent
 func _half_w() -> int:

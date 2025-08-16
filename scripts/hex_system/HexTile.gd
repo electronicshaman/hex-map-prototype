@@ -1,50 +1,33 @@
 class_name HexTile
 extends Resource
 
-enum TerrainType {
-	GOLDFIELD,
-	BUSH,
-	CREEK,
-	TOWN,
-	MOUNTAIN,
-	ROAD,
-	PLAINS
-}
-
 @export var coordinates: HexCoordinates
-@export var terrain_type: TerrainType = TerrainType.PLAINS
+@export var terrain_resource: TerrainTypeResource
 @export var is_explored: bool = false
 @export var is_visible: bool = false
-@export var movement_cost: int = 1
 @export var has_encounter: bool = false
 @export var encounter_data: Dictionary = {}
 @export var custom_data: Dictionary = {}
 
-func _init(coords: HexCoordinates = null, terrain: TerrainType = TerrainType.PLAINS):
+# Cached movement cost for performance
+var _cached_movement_cost: int = 1
+
+func _init(coords: HexCoordinates = null, terrain: TerrainTypeResource = null):
 	coordinates = coords if coords else HexCoordinates.new()
-	terrain_type = terrain
-	_set_terrain_properties()
+	if terrain:
+		set_terrain_resource(terrain)
 
-func _set_terrain_properties():
-	match terrain_type:
-		TerrainType.GOLDFIELD:
-			movement_cost = 2
-		TerrainType.BUSH:
-			movement_cost = 3
-		TerrainType.CREEK:
-			movement_cost = 999  # Impassable river
-		TerrainType.TOWN:
-			movement_cost = 1
-		TerrainType.MOUNTAIN:
-			movement_cost = 999  # Impassable mountain
-		TerrainType.ROAD:
-			movement_cost = 1
-		TerrainType.PLAINS:
-			movement_cost = 2
+func set_terrain_resource(terrain: TerrainTypeResource):
+	terrain_resource = terrain
+	if terrain_resource:
+		_cached_movement_cost = terrain_resource.movement_cost
+	else:
+		_cached_movement_cost = 1
 
-func set_terrain(terrain: TerrainType):
-	terrain_type = terrain
-	_set_terrain_properties()
+func get_movement_cost() -> int:
+	if terrain_resource:
+		return terrain_resource.movement_cost
+	return _cached_movement_cost
 
 func explore():
 	is_explored = true
@@ -54,65 +37,42 @@ func set_visibility(visible: bool):
 	is_visible = visible
 
 func can_move_to() -> bool:
-	return movement_cost < 999
+	if terrain_resource:
+		return terrain_resource.passable
+	return _cached_movement_cost < 999
 
 func get_terrain_name() -> String:
-	match terrain_type:
-		TerrainType.GOLDFIELD:
-			return "Goldfield"
-		TerrainType.BUSH:
-			return "Bush"
-		TerrainType.CREEK:
-			return "Creek"
-		TerrainType.TOWN:
-			return "Town"
-		TerrainType.MOUNTAIN:
-			return "Mountain"
-		TerrainType.ROAD:
-			return "Road"
-		TerrainType.PLAINS:
-			return "Plains"
-		_:
-			return "Unknown"
+	if terrain_resource:
+		return terrain_resource.terrain_name
+	return "Unknown"
 
 func get_terrain_color() -> Color:
-	match terrain_type:
-		TerrainType.GOLDFIELD:
-			return Color.GOLD
-		TerrainType.BUSH:
-			return Color.DARK_OLIVE_GREEN
-		TerrainType.CREEK:
-			return Color.CYAN
-		TerrainType.TOWN:
-			return Color.LIGHT_GRAY
-		TerrainType.MOUNTAIN:
-			return Color.DARK_GRAY
-		TerrainType.ROAD:
-			return Color.SADDLE_BROWN
-		TerrainType.PLAINS:
-			return Color.YELLOW_GREEN
-		_:
-			return Color.WHITE
+	if terrain_resource:
+		return terrain_resource.get_display_color(is_visible, is_explored)
+	return Color.WHITE
 
 func to_dict() -> Dictionary:
 	return {
 		"coordinates": coordinates.to_dict() if coordinates else {},
-		"terrain_type": terrain_type,
+		"terrain_name": terrain_resource.terrain_name if terrain_resource else "Unknown",
 		"is_explored": is_explored,
 		"is_visible": is_visible,
-		"movement_cost": movement_cost,
 		"has_encounter": has_encounter,
 		"encounter_data": encounter_data,
 		"custom_data": custom_data
 	}
 
-static func from_dict(data: Dictionary) -> HexTile:
+static func from_dict(data: Dictionary, terrain_db: TerrainDatabase = null) -> HexTile:
 	var tile = HexTile.new()
 	tile.coordinates = HexCoordinates.from_dict(data.get("coordinates", {}))
-	tile.terrain_type = data.get("terrain_type", TerrainType.PLAINS)
+	
+	# Try to restore terrain from database if available
+	var terrain_name = data.get("terrain_name", "Plains")
+	if terrain_db:
+		tile.terrain_resource = terrain_db.get_terrain_by_name(terrain_name)
+	
 	tile.is_explored = data.get("is_explored", false)
 	tile.is_visible = data.get("is_visible", false)
-	tile.movement_cost = data.get("movement_cost", 1)
 	tile.has_encounter = data.get("has_encounter", false)
 	tile.encounter_data = data.get("encounter_data", {})
 	tile.custom_data = data.get("custom_data", {})

@@ -1,0 +1,46 @@
+[gd_resource type="Resource" script_class="MapGenerationSettings" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/MapGenerationSettings.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+grid_width = 80
+grid_height = 60
+hex_size = 32.0
+flat_top = false
+elevation_seed = 12345
+moisture_seed = 67890
+elevation_frequency = 0.08
+elevation_octaves = 4
+elevation_lacunarity = 2.0
+elevation_gain = 0.5
+moisture_frequency = 0.18
+moisture_octaves = 3
+moisture_lacunarity = 2.0
+moisture_gain = 0.55
+warp_enabled = true
+warp_amplitude = 40.0
+warp_frequency = 0.03
+mountain_threshold = 0.6
+hill_threshold = 0.45
+valley_threshold = 0.32
+high_moisture_threshold = 0.58
+medium_moisture_threshold = 0.48
+low_moisture_threshold = 0.38
+goldfield_elevation_min = 0.5
+goldfield_moisture_min = 0.3
+goldfield_moisture_max = 0.7
+goldfield_noise_threshold = 0.4
+goldfield_mine_count_min = 5
+goldfield_mine_count_max = 10
+goldfield_deposit_count_min = 5
+goldfield_deposit_count_max = 10
+town_count = 5
+town_spacing = 8.0
+river_count = 8
+max_river_length = 120
+settlement_min_count = 2
+settlement_max_count = 5
+settlement_min_distance = 6
+smooth_isolated_tiles = true
+majority_smoothing_passes = 2

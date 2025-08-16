@@ -1,0 +1,25 @@
+[gd_resource type="Resource" script_class="TerrainTypeResource" load_steps=2 format=3]
+
+[ext_resource type="Script" path="res://scripts/resources/TerrainTypeResource.gd" id="1"]
+
+[resource]
+script = ExtResource("1")
+terrain_name = "Bush"
+movement_cost = 3
+passable = true
+buildable = false
+base_color = Color(0.333333, 0.419608, 0.184314, 1)
+dimmed_color = Color(0.166667, 0.209804, 0.092157, 1)
+outline_color = Color(0, 0, 0, 1)
+visibility_modifier = 0.8
+defense_bonus = 1
+resource_yield = 1.2
+blocks_line_of_sight = false
+provides_water = false
+is_road = false
+is_settlement = false
+dawn_movement_modifier = 0
+day_movement_modifier = 0
+dusk_movement_modifier = 1
+night_movement_modifier = 1
+prohibit_night_movement = false

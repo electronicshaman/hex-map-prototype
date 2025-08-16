@@ -1,40 +1,42 @@
 class_name TerrainGenerator
 extends Resource
 
-# Configurable generation parameters
-@export var elevation_seed: int = 12345
-@export var moisture_seed: int = 67890
-@export var elevation_frequency: float = 0.08
-@export var moisture_frequency: float = 0.18
-@export var elevation_octaves: int = 4
-@export var elevation_lacunarity: float = 2.0
-@export var elevation_gain: float = 0.5
-@export var moisture_octaves: int = 3
-@export var moisture_lacunarity: float = 2.0
-@export var moisture_gain: float = 0.55
-@export var warp_enabled: bool = true
-@export var warp_amplitude: float = 40.0
-@export var warp_frequency: float = 0.03
+@export var map_generation_settings: MapGenerationSettings
+
+# Cached settings for performance
+var elevation_seed: int = 12345
+var moisture_seed: int = 67890
+var elevation_frequency: float = 0.08
+var moisture_frequency: float = 0.18
+var elevation_octaves: int = 4
+var elevation_lacunarity: float = 2.0
+var elevation_gain: float = 0.5
+var moisture_octaves: int = 3
+var moisture_lacunarity: float = 2.0
+var moisture_gain: float = 0.55
+var warp_enabled: bool = true
+var warp_amplitude: float = 40.0
+var warp_frequency: float = 0.03
 
 # Biome thresholds (adjusted for more varied terrain)
-@export var mountain_threshold: float = 0.6
-@export var hill_threshold: float = 0.45
-@export var valley_threshold: float = 0.32
-@export var high_moisture_threshold: float = 0.58
-@export var medium_moisture_threshold: float = 0.48
-@export var low_moisture_threshold: float = 0.38
+var mountain_threshold: float = 0.6
+var hill_threshold: float = 0.45
+var valley_threshold: float = 0.32
+var high_moisture_threshold: float = 0.58
+var medium_moisture_threshold: float = 0.48
+var low_moisture_threshold: float = 0.38
 
 # Goldfield controls
-@export var goldfield_elevation_min: float = 0.5
-@export var goldfield_moisture_min: float = 0.3
-@export var goldfield_moisture_max: float = 0.7
-@export var goldfield_noise_threshold: float = 0.4
+var goldfield_elevation_min: float = 0.5
+var goldfield_moisture_min: float = 0.3
+var goldfield_moisture_max: float = 0.7
+var goldfield_noise_threshold: float = 0.4
 
 # Civilization parameters
-@export var town_count: int = 5
-@export var town_spacing: float = 8.0
-@export var river_count: int = 8
-@export var max_river_length: int = 120
+var town_count: int = 5
+var town_spacing: float = 8.0
+var river_count: int = 8
+var max_river_length: int = 120
 
 # Noise generators
 var elevation_noise: FastNoiseLite
@@ -43,7 +45,42 @@ var warp_noise_x: FastNoiseLite
 var warp_noise_y: FastNoiseLite
 
 func _init():
+	_load_settings()
 	_setup_noise_generators()
+
+func _load_settings():
+	if not map_generation_settings:
+		map_generation_settings = load("res://resources/default_map_generation_settings.tres")
+		print("TerrainGenerator: Loaded default map generation settings")
+	
+	if map_generation_settings:
+		elevation_seed = map_generation_settings.elevation_seed
+		moisture_seed = map_generation_settings.moisture_seed
+		elevation_frequency = map_generation_settings.elevation_frequency
+		moisture_frequency = map_generation_settings.moisture_frequency
+		elevation_octaves = map_generation_settings.elevation_octaves
+		elevation_lacunarity = map_generation_settings.elevation_lacunarity
+		elevation_gain = map_generation_settings.elevation_gain
+		moisture_octaves = map_generation_settings.moisture_octaves
+		moisture_lacunarity = map_generation_settings.moisture_lacunarity
+		moisture_gain = map_generation_settings.moisture_gain
+		warp_enabled = map_generation_settings.warp_enabled
+		warp_amplitude = map_generation_settings.warp_amplitude
+		warp_frequency = map_generation_settings.warp_frequency
+		mountain_threshold = map_generation_settings.mountain_threshold
+		hill_threshold = map_generation_settings.hill_threshold
+		valley_threshold = map_generation_settings.valley_threshold
+		high_moisture_threshold = map_generation_settings.high_moisture_threshold
+		medium_moisture_threshold = map_generation_settings.medium_moisture_threshold
+		low_moisture_threshold = map_generation_settings.low_moisture_threshold
+		goldfield_elevation_min = map_generation_settings.goldfield_elevation_min
+		goldfield_moisture_min = map_generation_settings.goldfield_moisture_min
+		goldfield_moisture_max = map_generation_settings.goldfield_moisture_max
+		goldfield_noise_threshold = map_generation_settings.goldfield_noise_threshold
+		town_count = map_generation_settings.town_count
+		town_spacing = map_generation_settings.town_spacing
+		river_count = map_generation_settings.river_count
+		max_river_length = map_generation_settings.max_river_length
 
 func _setup_noise_generators():
 	# Elevation noise - creates mountain ranges and valleys
@@ -97,6 +134,12 @@ func generate_terrain_for_grid(hex_grid: HexGrid):
 
 func _generate_base_terrain(hex_grid: HexGrid):
 	print("Generating base terrain with elevation and moisture layers...")
+	
+	# Ensure terrain database is available
+	if not hex_grid.terrain_database:
+		push_error("TerrainGenerator: HexGrid missing terrain_database")
+		return
+	
 	var biome_counts = {}
 	
 	for key in hex_grid.tiles:
@@ -108,8 +151,8 @@ func _generate_base_terrain(hex_grid: HexGrid):
 		var moisture = _get_moisture_at(hex_grid, coords)
 		
 		# Determine terrain type based on biome rules
-		var terrain_type = _determine_terrain_type(elevation, moisture)
-		tile.set_terrain(terrain_type)
+		var terrain_resource = _determine_terrain_resource(hex_grid.terrain_database, elevation, moisture)
+		tile.set_terrain_resource(terrain_resource)
 		
 		# Track biome distribution for debugging
 		var terrain_name = tile.get_terrain_name()
@@ -143,44 +186,47 @@ func _get_moisture_at(hex_grid: HexGrid, coords: HexCoordinates) -> float:
 	var noise_value = moisture_noise.get_noise_2d(world_pos.x, world_pos.y)
 	return (noise_value + 1.0) * 0.5
 
-func _determine_terrain_type(elevation: float, moisture: float) -> HexTile.TerrainType:
+func _determine_terrain_resource(terrain_db: TerrainDatabase, elevation: float, moisture: float) -> TerrainTypeResource:
 	# High elevation = mountains
 	if elevation > mountain_threshold:
-		return HexTile.TerrainType.MOUNTAIN
+		return terrain_db.get_terrain_by_name("Mountain")
 	
 	# Hills with high moisture = forests/bush
 	if elevation > hill_threshold and moisture > medium_moisture_threshold:
-		return HexTile.TerrainType.BUSH
+		return terrain_db.get_terrain_by_name("Bush")
 	
 	# Low elevation with high moisture = water features
 	if elevation < valley_threshold and moisture > high_moisture_threshold:
-		return HexTile.TerrainType.CREEK
+		return terrain_db.get_terrain_by_name("Creek")
 	
 	# Goldfields near mountains (geological features)
 	if elevation > goldfield_elevation_min and elevation < mountain_threshold and moisture > goldfield_moisture_min and moisture < goldfield_moisture_max:
 		var geo_noise = elevation_noise.get_noise_2d(elevation * 200.0, moisture * 200.0)
 		if geo_noise > goldfield_noise_threshold:
-			return HexTile.TerrainType.GOLDFIELD
+			return terrain_db.get_terrain_by_name("Goldfield")
 	
 	# Very dry areas = plains  
 	if moisture < low_moisture_threshold:
-		return HexTile.TerrainType.PLAINS
+		return terrain_db.get_terrain_by_name("Plains")
 	
 	# Medium moisture areas = more bush/forest
 	if moisture > medium_moisture_threshold:
-		return HexTile.TerrainType.BUSH
+		return terrain_db.get_terrain_by_name("Bush")
 	
 	# Default to plains for remaining areas
-	return HexTile.TerrainType.PLAINS
+	return terrain_db.get_terrain_by_name("Plains")
 
 func _carve_rivers(hex_grid: HexGrid):
 	print("Carving rivers from high elevations...")
+	var terrain_db = hex_grid.terrain_database
+	
 	# Collect potential sources across the map with their elevation (prefer highest)
 	var candidates: Array = []
 	for key in hex_grid.tiles:
 		var tile: HexTile = hex_grid.tiles[key]
 		var elev = _get_elevation_at(hex_grid, tile.coordinates)
-		if elev > hill_threshold and tile.terrain_type not in [HexTile.TerrainType.MOUNTAIN, HexTile.TerrainType.TOWN]:
+		var terrain_name = tile.get_terrain_name()
+		if elev > hill_threshold and terrain_name not in ["Mountain", "Town"]:
 			candidates.append({"coord": tile.coordinates, "elev": elev})
 
 	if candidates.is_empty():
@@ -193,6 +239,7 @@ func _carve_rivers(hex_grid: HexGrid):
 		_flow_river_from(hex_grid, candidates[i]["coord"])
 
 func _flow_river_from(hex_grid: HexGrid, start: HexCoordinates):
+	var terrain_db = hex_grid.terrain_database
 	var visited := {}
 	var current := start
 	var length := 0
@@ -202,8 +249,10 @@ func _flow_river_from(hex_grid: HexGrid, start: HexCoordinates):
 		var current_elev = _get_elevation_at(hex_grid, current)
 		# Mark current as creek if allowed
 		var tile = hex_grid.get_tile(current)
-		if tile and tile.terrain_type not in [HexTile.TerrainType.TOWN, HexTile.TerrainType.ROAD, HexTile.TerrainType.MOUNTAIN]:
-			tile.set_terrain(HexTile.TerrainType.CREEK)
+		if tile:
+			var terrain_name = tile.get_terrain_name()
+			if terrain_name not in ["Town", "Road", "Mountain"]:
+				tile.set_terrain_resource(terrain_db.get_terrain_by_name("Creek"))
 
 		# Choose lowest neighbor not visited; if no downhill, allow gentle flat continuation
 		var lowest_neighbor: HexCoordinates = null
@@ -225,14 +274,20 @@ func _flow_river_from(hex_grid: HexGrid, start: HexCoordinates):
 
 func _place_civilization_features(hex_grid: HexGrid):
 	print("Placing civilization features (center town, settlements, roads, gold)...")
+	var terrain_db = hex_grid.terrain_database
 
 	# Center 7-hex town at (0,0)
 	var center_cluster: Array[HexCoordinates] = _place_center_town(hex_grid)
 
-	# Random single-tile settlements (2-5)
+	# Random single-tile settlements
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
 	var settlements_count = rng.randi_range(2, 5)
+	var min_distance = 6
+	if map_generation_settings:
+		settlements_count = rng.randi_range(map_generation_settings.settlement_min_count, map_generation_settings.settlement_max_count)
+		min_distance = map_generation_settings.settlement_min_distance
+		
 	var settlement_locations: Array[HexCoordinates] = []
 
 	var forbidden: Dictionary = {}
@@ -244,7 +299,7 @@ func _place_civilization_features(hex_grid: HexGrid):
 	while settlement_locations.size() < settlements_count and attempts < max_attempts:
 		attempts += 1
 		var coord = _random_coord_within_grid(hex_grid, rng)
-		if _is_suitable_for_settlement(hex_grid, coord, forbidden, 6):
+		if _is_suitable_for_settlement(hex_grid, coord, forbidden, min_distance):
 			settlement_locations.append(coord)
 			forbidden[_coord_key(coord)] = true
 
@@ -252,11 +307,18 @@ func _place_civilization_features(hex_grid: HexGrid):
 	for loc in settlement_locations:
 		var t = hex_grid.get_tile(loc)
 		if t:
-			t.set_terrain(HexTile.TerrainType.TOWN)
+			t.set_terrain_resource(terrain_db.get_terrain_by_name("Town"))
 
-	# Place gold mines (5-10) and gold deposits (5-10)
-	var mines = rng.randi_range(5, 10)
-	var deposits = rng.randi_range(5, 10)
+	# Place gold mines and deposits based on settings
+	var mines = 5
+	var deposits = 5
+	if map_generation_settings:
+		mines = rng.randi_range(map_generation_settings.goldfield_mine_count_min, map_generation_settings.goldfield_mine_count_max)
+		deposits = rng.randi_range(map_generation_settings.goldfield_deposit_count_min, map_generation_settings.goldfield_deposit_count_max)
+	else:
+		mines = rng.randi_range(5, 10)
+		deposits = rng.randi_range(5, 10)
+	
 	_place_gold_features(hex_grid, rng, mines, true, forbidden)
 	_place_gold_features(hex_grid, rng, deposits, false, forbidden)
 
@@ -265,12 +327,15 @@ func _place_civilization_features(hex_grid: HexGrid):
 		var path = _find_low_cost_path(hex_grid, HexCoordinates.new(0, 0), s)
 		for c in path:
 			var tile = hex_grid.get_tile(c)
-			if tile and tile.terrain_type not in [HexTile.TerrainType.TOWN, HexTile.TerrainType.MOUNTAIN, HexTile.TerrainType.CREEK]:
-				tile.set_terrain(HexTile.TerrainType.ROAD)
+			if tile:
+				var terrain_name = tile.get_terrain_name()
+				if terrain_name not in ["Town", "Mountain", "Creek"]:
+					tile.set_terrain_resource(terrain_db.get_terrain_by_name("Road"))
 
 	print("Placed ", settlement_locations.size(), " settlements and center town")
 
 func _place_center_town(hex_grid: HexGrid) -> Array[HexCoordinates]:
+	var terrain_db = hex_grid.terrain_database
 	var center = HexCoordinates.new(0, 0)
 	var coords: Array[HexCoordinates] = [center]
 	# Add the six neighbors
@@ -279,7 +344,7 @@ func _place_center_town(hex_grid: HexGrid) -> Array[HexCoordinates]:
 	for c in coords:
 		var tile = hex_grid.get_tile(c)
 		if tile:
-			tile.set_terrain(HexTile.TerrainType.TOWN)
+			tile.set_terrain_resource(terrain_db.get_terrain_by_name("Town"))
 	return coords
 
 func _random_coord_within_grid(hex_grid: HexGrid, rng: RandomNumberGenerator) -> HexCoordinates:
@@ -296,7 +361,8 @@ func _is_suitable_for_settlement(hex_grid: HexGrid, coord: HexCoordinates, forbi
 	var tile = hex_grid.get_tile(coord)
 	if not tile:
 		return false
-	if tile.terrain_type in [HexTile.TerrainType.MOUNTAIN, HexTile.TerrainType.CREEK, HexTile.TerrainType.TOWN]:
+	var terrain_name = tile.get_terrain_name()
+	if terrain_name in ["Mountain", "Creek", "Town"]:
 		return false
 	# Keep away from existing forbidden set by min_dist
 	for fkey in forbidden.keys():
@@ -309,6 +375,7 @@ func _is_suitable_for_settlement(hex_grid: HexGrid, coord: HexCoordinates, forbi
 	return true
 
 func _place_gold_features(hex_grid: HexGrid, rng: RandomNumberGenerator, count: int, is_mine: bool, forbidden: Dictionary):
+	var terrain_db = hex_grid.terrain_database
 	var placed = 0
 	var tries = 0
 	var max_tries = 2000
@@ -321,10 +388,11 @@ func _place_gold_features(hex_grid: HexGrid, rng: RandomNumberGenerator, count: 
 		var tile = hex_grid.get_tile(coord)
 		if not tile:
 			continue
-		if tile.terrain_type in [HexTile.TerrainType.MOUNTAIN, HexTile.TerrainType.CREEK, HexTile.TerrainType.TOWN, HexTile.TerrainType.ROAD]:
+		var terrain_name = tile.get_terrain_name()
+		if terrain_name in ["Mountain", "Creek", "Town", "Road"]:
 			continue
 		# Place goldfield and annotate
-		tile.set_terrain(HexTile.TerrainType.GOLDFIELD)
+		tile.set_terrain_resource(terrain_db.get_terrain_by_name("Goldfield"))
 		tile.has_encounter = true
 		tile.encounter_data = {
 			"resource": "gold",
@@ -340,7 +408,8 @@ func _find_town_locations(hex_grid: HexGrid) -> Array[HexCoordinates]:
 	# Find all suitable locations (not mountains, not creeks)
 	for key in hex_grid.tiles:
 		var tile: HexTile = hex_grid.tiles[key]
-		if tile.terrain_type in [HexTile.TerrainType.PLAINS, HexTile.TerrainType.GOLDFIELD]:
+		var terrain_name = tile.get_terrain_name()
+		if terrain_name in ["Plains", "Goldfield"]:
 			suitable_locations.append(tile.coordinates)
 	
 	# Select well-spaced town locations
@@ -363,6 +432,7 @@ func _find_town_locations(hex_grid: HexGrid) -> Array[HexCoordinates]:
 	return town_locations
 
 func _generate_roads_between_towns(hex_grid: HexGrid, town_locations: Array[HexCoordinates]):
+	var terrain_db = hex_grid.terrain_database
 	# Connect each town to nearest neighbors via low-cost paths avoiding mountains/creeks
 	for i in range(town_locations.size()):
 		var start = town_locations[i]
@@ -381,8 +451,10 @@ func _generate_roads_between_towns(hex_grid: HexGrid, town_locations: Array[HexC
 			if path.size() > 0:
 				for coord in path:
 					var tile = hex_grid.get_tile(coord)
-					if tile and tile.terrain_type not in [HexTile.TerrainType.TOWN, HexTile.TerrainType.MOUNTAIN, HexTile.TerrainType.CREEK]:
-						tile.set_terrain(HexTile.TerrainType.ROAD)
+					if tile:
+						var terrain_name = tile.get_terrain_name()
+						if terrain_name not in ["Town", "Mountain", "Creek"]:
+							tile.set_terrain_resource(terrain_db.get_terrain_by_name("Road"))
 
 func _find_low_cost_path(hex_grid: HexGrid, start: HexCoordinates, end: HexCoordinates) -> Array[HexCoordinates]:
 	# A* variant with terrain costs; block mountains/creeks to make roads organic around features
@@ -395,16 +467,17 @@ func _find_low_cost_path(hex_grid: HexGrid, start: HexCoordinates, end: HexCoord
 		var t = hex_grid.get_tile(c)
 		if not t:
 			return 9999
-		match t.terrain_type:
-			HexTile.TerrainType.MOUNTAIN, HexTile.TerrainType.CREEK:
+		var terrain_name = t.get_terrain_name()
+		match terrain_name:
+			"Mountain", "Creek":
 				return 9999 # treat as impassable for roads
-			HexTile.TerrainType.BUSH:
+			"Bush":
 				return 3
-			HexTile.TerrainType.GOLDFIELD:
+			"Goldfield":
 				return 2
-			HexTile.TerrainType.PLAINS:
+			"Plains":
 				return 1
-			HexTile.TerrainType.TOWN, HexTile.TerrainType.ROAD:
+			"Town", "Road":
 				return 1
 			_:
 				return 2
@@ -448,19 +521,21 @@ func _post_process_terrain(hex_grid: HexGrid):
 	_add_terrain_variety(hex_grid)
 
 func _smooth_isolated_tiles(hex_grid: HexGrid):
+	var terrain_db = hex_grid.terrain_database
 	var tiles_to_change = []
 	
 	for key in hex_grid.tiles:
 		var tile: HexTile = hex_grid.tiles[key]
 		# Preserve special features
-		if tile.terrain_type in [HexTile.TerrainType.CREEK, HexTile.TerrainType.ROAD, HexTile.TerrainType.TOWN]:
+		var terrain_name = tile.get_terrain_name()
+		if terrain_name in ["Creek", "Road", "Town"]:
 			continue
 		var neighbors = hex_grid.get_neighbors(tile.coordinates)
 		
 		# Count neighbors of same type
 		var same_type_count = 0
 		for neighbor in neighbors:
-			if neighbor.terrain_type == tile.terrain_type:
+			if neighbor.get_terrain_name() == terrain_name:
 				same_type_count += 1
 		
 		# If tile is isolated (no neighbors of same type), change it
@@ -471,24 +546,20 @@ func _smooth_isolated_tiles(hex_grid: HexGrid):
 				var type_name = neighbor.get_terrain_name()
 				neighbor_types[type_name] = neighbor_types.get(type_name, 0) + 1
 			
-			var most_common_type = HexTile.TerrainType.PLAINS
+			var most_common_terrain_name = "Plains"
 			var max_count = 0
 			for type_name in neighbor_types:
 				if neighbor_types[type_name] > max_count:
 					max_count = neighbor_types[type_name]
-					# Convert type name back to enum (simple approach)
-					if type_name == "Bush":
-						most_common_type = HexTile.TerrainType.BUSH
-					elif type_name == "Creek":
-						most_common_type = HexTile.TerrainType.CREEK
-					elif type_name == "Mountain":
-						most_common_type = HexTile.TerrainType.MOUNTAIN
+					most_common_terrain_name = type_name
 			
-			tiles_to_change.append([tile, most_common_type])
+			var most_common_resource = terrain_db.get_terrain_by_name(most_common_terrain_name)
+			if most_common_resource:
+				tiles_to_change.append([tile, most_common_resource])
 	
 	# Apply changes
 	for change in tiles_to_change:
-		change[0].set_terrain(change[1])
+		change[0].set_terrain_resource(change[1])
 	
 	print("Smoothed ", tiles_to_change.size(), " isolated tiles")
 
@@ -498,12 +569,13 @@ func _log_feature_counts(hex_grid: HexGrid):
 	var towns := 0
 	for key in hex_grid.tiles:
 		var t: HexTile = hex_grid.tiles[key]
-		match t.terrain_type:
-			HexTile.TerrainType.ROAD:
+		var terrain_name = t.get_terrain_name()
+		match terrain_name:
+			"Road":
 				roads += 1
-			HexTile.TerrainType.CREEK:
+			"Creek":
 				rivers += 1
-			HexTile.TerrainType.TOWN:
+			"Town":
 				towns += 1
 	print("Feature counts -> Roads:", roads, " Rivers:", rivers, " Towns:", towns)
 
@@ -514,6 +586,7 @@ func _add_terrain_variety(_hex_grid: HexGrid):
 
 # Utility function to regenerate with new parameters
 func regenerate_with_new_settings(hex_grid: HexGrid):
+	_load_settings()
 	_setup_noise_generators()
 	generate_terrain_for_grid(hex_grid)
 
@@ -533,27 +606,32 @@ func _insert_sorted(array: Array, item: HexCoordinates, priority: float, priorit
 	array.push_back(item)
 
 func _majority_smooth(hex_grid: HexGrid, passes: int = 1):
+	var terrain_db = hex_grid.terrain_database
 	for p in range(passes):
 		var changes: Array = []
 		for key in hex_grid.tiles:
 			var tile: HexTile = hex_grid.tiles[key]
 			# Don't alter special features; preserve creeks (rivers)
-			if tile.terrain_type in [HexTile.TerrainType.TOWN, HexTile.TerrainType.ROAD, HexTile.TerrainType.CREEK]:
+			var terrain_name = tile.get_terrain_name()
+			if terrain_name in ["Town", "Road", "Creek"]:
 				continue
 			var neighbors = hex_grid.get_neighbors(tile.coordinates)
 			var counts := {}
 			for n in neighbors:
-				if n.terrain_type in [HexTile.TerrainType.TOWN, HexTile.TerrainType.ROAD, HexTile.TerrainType.CREEK]:
+				var n_terrain_name = n.get_terrain_name()
+				if n_terrain_name in ["Town", "Road", "Creek"]:
 					continue
-				counts[n.terrain_type] = counts.get(n.terrain_type, 0) + 1
-			var best_type = tile.terrain_type
+				counts[n_terrain_name] = counts.get(n_terrain_name, 0) + 1
+			var best_terrain_name = terrain_name
 			var best_count = 0
-			for t in counts.keys():
-				if counts[t] > best_count:
-					best_count = counts[t]
-					best_type = t
+			for t_name in counts.keys():
+				if counts[t_name] > best_count:
+					best_count = counts[t_name]
+					best_terrain_name = t_name
 			# Apply if there is a strong local majority
-			if best_type != tile.terrain_type and best_count >= 3:
-				changes.append([tile, best_type])
+			if best_terrain_name != terrain_name and best_count >= 3:
+				var best_resource = terrain_db.get_terrain_by_name(best_terrain_name)
+				if best_resource:
+					changes.append([tile, best_resource])
 		for change in changes:
-			change[0].set_terrain(change[1])
+			change[0].set_terrain_resource(change[1])
