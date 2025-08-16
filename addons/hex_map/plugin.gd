@@ -1,3 +1,4 @@
+@tool
 extends EditorPlugin
 
 var _icon := preload("res://icon.svg")
