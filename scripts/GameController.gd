@@ -280,21 +280,23 @@ func _setup_generation_ui():
 	# Initialize control values from current generator if available
 	var tg: TerrainGenerator = hex_grid.terrain_generator if hex_grid else null
 	if tg:
-		(_get_slider(gen_controls["elevation_frequency"]).value) = tg.elevation_frequency
-		(_get_slider(gen_controls["moisture_frequency"]).value) = tg.moisture_frequency
-		(_get_slider(gen_controls["mountain_threshold"]).value) = tg.mountain_threshold
-		(_get_slider(gen_controls["hill_threshold"]).value) = tg.hill_threshold
-		(_get_slider(gen_controls["valley_threshold"]).value) = tg.valley_threshold
-		(_get_slider(gen_controls["high_moisture_threshold"]).value) = tg.high_moisture_threshold
-		(_get_slider(gen_controls["medium_moisture_threshold"]).value) = tg.medium_moisture_threshold
-		(_get_slider(gen_controls["low_moisture_threshold"]).value) = tg.low_moisture_threshold
-		(_get_checkbox(gen_controls["warp_enabled"]).button_pressed) = tg.warp_enabled
-		(_get_slider(gen_controls["warp_amplitude"]).value) = tg.warp_amplitude
-		(_get_spinbox(gen_controls["river_count"]).value) = tg.river_count
-		(_get_slider(gen_controls["goldfield_elevation_min"]).value) = tg.goldfield_elevation_min
-		(_get_slider(gen_controls["goldfield_moisture_min"]).value) = tg.goldfield_moisture_min
-		(_get_slider(gen_controls["goldfield_moisture_max"]).value) = tg.goldfield_moisture_max
-		(_get_slider(gen_controls["goldfield_noise_threshold"]).value) = tg.goldfield_noise_threshold
+		var s := tg.map_generation_settings
+		if s:
+			(_get_slider(gen_controls["elevation_frequency"]).value) = s.elevation_frequency
+			(_get_slider(gen_controls["moisture_frequency"]).value) = s.moisture_frequency
+			(_get_slider(gen_controls["mountain_threshold"]).value) = s.mountain_threshold
+			(_get_slider(gen_controls["hill_threshold"]).value) = s.hill_threshold
+			(_get_slider(gen_controls["valley_threshold"]).value) = s.valley_threshold
+			(_get_slider(gen_controls["high_moisture_threshold"]).value) = s.high_moisture_threshold
+			(_get_slider(gen_controls["medium_moisture_threshold"]).value) = s.medium_moisture_threshold
+			(_get_slider(gen_controls["low_moisture_threshold"]).value) = s.low_moisture_threshold
+			(_get_checkbox(gen_controls["warp_enabled"]).button_pressed) = s.warp_enabled
+			(_get_slider(gen_controls["warp_amplitude"]).value) = s.warp_amplitude
+			(_get_spinbox(gen_controls["river_count"]).value) = s.river_count
+			(_get_slider(gen_controls["goldfield_elevation_min"]).value) = s.goldfield_elevation_min
+			(_get_slider(gen_controls["goldfield_moisture_min"]).value) = s.goldfield_moisture_min
+			(_get_slider(gen_controls["goldfield_moisture_max"]).value) = s.goldfield_moisture_max
+			(_get_slider(gen_controls["goldfield_noise_threshold"]).value) = s.goldfield_noise_threshold
 
 	# Initialize sight range slider from current player value
 	if player:
@@ -329,8 +331,9 @@ func _setup_generation_ui():
 			return
 		var rng = RandomNumberGenerator.new()
 		rng.randomize()
-		hex_grid.terrain_generator.elevation_seed = rng.randi()
-		hex_grid.terrain_generator.moisture_seed = rng.randi()
+		if hex_grid.terrain_generator.map_generation_settings:
+			hex_grid.terrain_generator.map_generation_settings.elevation_seed = rng.randi()
+			hex_grid.terrain_generator.map_generation_settings.moisture_seed = rng.randi()
 		_apply_generation_settings()
 		hex_grid.terrain_generator.regenerate_with_new_settings(hex_grid)
 		if hex_renderer:
@@ -496,34 +499,39 @@ func _apply_generation_settings():
 	if not hex_grid or not hex_grid.terrain_generator:
 		return
 	var tg: TerrainGenerator = hex_grid.terrain_generator
+	var s := tg.map_generation_settings
+	if not s:
+		# Fallback to default settings if missing
+		s = load("res://resources/default_map_generation_settings.tres")
+		tg.map_generation_settings = s
 	# Apply sight range from UI to player as part of settings apply
 	if "sight_range" in gen_controls and player:
 		player.sight_range = int(_get_slider(gen_controls["sight_range"]).value)
 	# Apply camera zoom from UI
 	if "camera_zoom" in gen_controls and camera:
 		camera.zoom = Vector2(_get_slider(gen_controls["camera_zoom"]).value, _get_slider(gen_controls["camera_zoom"]).value)
-	tg.elevation_frequency = _get_slider(gen_controls["elevation_frequency"]).value
-	tg.moisture_frequency = _get_slider(gen_controls["moisture_frequency"]).value
-	tg.mountain_threshold = _get_slider(gen_controls["mountain_threshold"]).value
-	tg.hill_threshold = _get_slider(gen_controls["hill_threshold"]).value
-	tg.valley_threshold = _get_slider(gen_controls["valley_threshold"]).value
+	s.elevation_frequency = _get_slider(gen_controls["elevation_frequency"]).value
+	s.moisture_frequency = _get_slider(gen_controls["moisture_frequency"]).value
+	s.mountain_threshold = _get_slider(gen_controls["mountain_threshold"]).value
+	s.hill_threshold = _get_slider(gen_controls["hill_threshold"]).value
+	s.valley_threshold = _get_slider(gen_controls["valley_threshold"]).value
 	# Normalize moisture thresholds to low <= medium <= high
 	var low_m = _get_slider(gen_controls["low_moisture_threshold"]).value
 	var med_m = _get_slider(gen_controls["medium_moisture_threshold"]).value
 	var high_m = _get_slider(gen_controls["high_moisture_threshold"]).value
 	var m_vals: Array = [low_m, med_m, high_m]
 	m_vals.sort()
-	tg.low_moisture_threshold = m_vals[0]
-	tg.medium_moisture_threshold = m_vals[1]
-	tg.high_moisture_threshold = m_vals[2]
+	s.low_moisture_threshold = m_vals[0]
+	s.medium_moisture_threshold = m_vals[1]
+	s.high_moisture_threshold = m_vals[2]
 	# Reflect normalized values back to sliders
-	_get_slider(gen_controls["low_moisture_threshold"]).value = tg.low_moisture_threshold
-	_get_slider(gen_controls["medium_moisture_threshold"]).value = tg.medium_moisture_threshold
-	_get_slider(gen_controls["high_moisture_threshold"]).value = tg.high_moisture_threshold
-	tg.warp_enabled = _get_checkbox(gen_controls["warp_enabled"]).button_pressed
-	tg.warp_amplitude = _get_slider(gen_controls["warp_amplitude"]).value
-	tg.river_count = int(_get_spinbox(gen_controls["river_count"]).value)
-	tg.goldfield_elevation_min = _get_slider(gen_controls["goldfield_elevation_min"]).value
+	_get_slider(gen_controls["low_moisture_threshold"]).value = s.low_moisture_threshold
+	_get_slider(gen_controls["medium_moisture_threshold"]).value = s.medium_moisture_threshold
+	_get_slider(gen_controls["high_moisture_threshold"]).value = s.high_moisture_threshold
+	s.warp_enabled = _get_checkbox(gen_controls["warp_enabled"]).button_pressed
+	s.warp_amplitude = _get_slider(gen_controls["warp_amplitude"]).value
+	s.river_count = int(_get_spinbox(gen_controls["river_count"]).value)
+	s.goldfield_elevation_min = _get_slider(gen_controls["goldfield_elevation_min"]).value
 	# Ensure goldfield moisture min <= max
 	var gf_min = _get_slider(gen_controls["goldfield_moisture_min"]).value
 	var gf_max = _get_slider(gen_controls["goldfield_moisture_max"]).value
@@ -531,12 +539,12 @@ func _apply_generation_settings():
 		var tmp = gf_min
 		gf_min = gf_max
 		gf_max = tmp
-	tg.goldfield_moisture_min = gf_min
-	tg.goldfield_moisture_max = gf_max
+	s.goldfield_moisture_min = gf_min
+	s.goldfield_moisture_max = gf_max
 	# Reflect back to sliders after normalization
-	_get_slider(gen_controls["goldfield_moisture_min"]).value = tg.goldfield_moisture_min
-	_get_slider(gen_controls["goldfield_moisture_max"]).value = tg.goldfield_moisture_max
-	tg.goldfield_noise_threshold = _get_slider(gen_controls["goldfield_noise_threshold"]).value
+	_get_slider(gen_controls["goldfield_moisture_min"]).value = s.goldfield_moisture_min
+	_get_slider(gen_controls["goldfield_moisture_max"]).value = s.goldfield_moisture_max
+	s.goldfield_noise_threshold = _get_slider(gen_controls["goldfield_noise_threshold"]).value
 
 func _connect_signals():
 	if player:

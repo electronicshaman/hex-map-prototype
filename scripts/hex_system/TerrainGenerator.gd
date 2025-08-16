@@ -155,7 +155,7 @@ func _determine_terrain_resource(terrain_db: TerrainDatabase, elevation: float, 
 
 func _carve_rivers(hex_grid: HexGrid):
 	print("Carving rivers from high elevations...")
-	var terrain_db = hex_grid.terrain_database
+	var _terrain_db = hex_grid.terrain_database
 	
 	# Collect potential sources across the map with their elevation (prefer highest)
 	var candidates: Array = []
@@ -210,8 +210,6 @@ func _flow_river_from(hex_grid: HexGrid, start: HexCoordinates):
 		current = lowest_neighbor
 
 func _generate_civilization(hex_grid: HexGrid):
-	var civilization_generator = CivilizationGenerator.new()
-	
 	# Create civilization settings from map generation settings
 	var civ_settings = CivilizationSettings.new()
 	civ_settings.settlement_min_count = map_generation_settings.settlement_min_count
@@ -226,12 +224,14 @@ func _generate_civilization(hex_grid: HexGrid):
 	civ_settings.town_count = map_generation_settings.town_count
 	civ_settings.town_spacing = map_generation_settings.town_spacing
 	
+	var civilization_generator = CivilizationGenerator.new()
 	civilization_generator.civilization_settings = civ_settings
 	
 	var rng = RandomNumberGenerator.new()
 	rng.randomize()
 	
-	var civilization_data = civilization_generator.generate_civilization_for_grid(hex_grid, rng)
+	var _civilization_data = civilization_generator.generate_civilization_for_grid(hex_grid, rng)
+	# The returned data is not used directly here; generators have already applied changes to the grid
 
 
 func _post_process_terrain(hex_grid: HexGrid):
